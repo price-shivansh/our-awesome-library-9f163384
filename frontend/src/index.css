@@ -1,0 +1,625 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Orbitron:wght@700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ══════════════════════════════════════════
+   DESIGN TOKENS
+══════════════════════════════════════════ */
+:root {
+  /* Backgrounds */
+  --bg-base: #0d1117;
+  --bg-panel: #161b22;
+  --bg-panel-alt: #1c2128;
+  --bg-elevated: #21262d;
+
+  /* Borders */
+  --border-subtle: #30363d;
+  --border-active: #3d444d;
+  --border-accent: rgba(52, 211, 153, 0.40);
+
+  /* Text */
+  --text-primary: #e6edf3;
+  --text-secondary: #848d97;
+  --text-muted: #484f58;
+
+  /* Accent — Emerald */
+  --accent: #34d399;
+  --accent-dim: rgba(52, 211, 153, 0.10);
+  --accent-border: rgba(52, 211, 153, 0.28);
+
+  /* Semantic */
+  --bull: #34d399;
+  --bull-dim: rgba(52, 211, 153, 0.10);
+  --bull-border: rgba(52, 211, 153, 0.28);
+  --bear: #f85149;
+  --bear-dim: rgba(248, 81, 73, 0.10);
+  --bear-border: rgba(248, 81, 73, 0.28);
+  --warn: #d29922;
+  --warn-dim: rgba(210, 153, 34, 0.10);
+  --warn-border: rgba(210, 153, 34, 0.28);
+
+  /* Chart */
+  --chart-grid: rgba(48, 54, 61, 0.70);
+  --chart-axis: #484f58;
+}
+
+/* ══════════════════════════════════════════
+   BASE RESET
+══════════════════════════════════════════ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-base);
+  font-family: 'Inter', system-ui, sans-serif;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ══════════════════════════════════════════
+   PANELS / CARDS
+══════════════════════════════════════════ */
+.holo-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Accent left border for highlighted panels */
+.holo-panel.panel-accent {
+  border-left: 3px solid var(--accent);
+}
+
+/* Remove the old scanline pseudo-elements — clean background */
+.holo-panel::before,
+.holo-panel::after {
+  display: none;
+}
+
+/* ══════════════════════════════════════════
+   PANEL HEADER
+══════════════════════════════════════════ */
+.panel-header {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+}
+
+.panel-header .icon-wrap {
+  color: var(--accent);
+  opacity: 0.8;
+}
+
+/* ══════════════════════════════════════════
+   TYPOGRAPHY
+══════════════════════════════════════════ */
+.holo-title {
+  font-family: 'Orbitron', monospace;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: 0.05em;
+}
+
+/* Data values — prices, percentages */
+.holo-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 500;
+}
+
+.holo-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.holo-red {
+  color: var(--bear);
+}
+
+.holo-green {
+  color: var(--bull);
+}
+
+/* ══════════════════════════════════════════
+   BUTTONS
+══════════════════════════════════════════ */
+.holo-btn {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  background: transparent;
+  border: 1px solid var(--border-active);
+  color: var(--text-secondary);
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.holo-btn:hover {
+  background: var(--bg-panel-alt);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.holo-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.holo-btn.btn-accent {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.holo-btn.btn-accent:hover {
+  background: var(--accent-dim);
+}
+
+/* ══════════════════════════════════════════
+   TABLES
+══════════════════════════════════════════ */
+.holo-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.holo-table thead tr {
+  background: var(--bg-panel-alt);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.holo-table th {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  padding: 10px 16px;
+  white-space: nowrap;
+}
+
+.holo-table tbody tr {
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.12s;
+}
+
+.holo-table tbody tr:hover {
+  background: var(--bg-panel-alt);
+}
+
+.holo-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.holo-table td {
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+/* ══════════════════════════════════════════
+   SIGNAL BADGES
+══════════════════════════════════════════ */
+.badge-base {
+  display: inline-flex;
+  align-items: center;
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.badge-strong-buy {
+  background: var(--bull-dim);
+  border-color: var(--bull-border);
+  color: var(--bull);
+}
+
+.badge-buy {
+  background: rgba(40, 167, 95, 0.10);
+  border-color: rgba(40, 167, 95, 0.28);
+  color: #0b8540;
+}
+
+.badge-hold {
+  background: var(--warn-dim);
+  border-color: var(--warn-border);
+  color: var(--warn);
+}
+
+.badge-sell {
+  background: rgba(230, 90, 40, 0.10);
+  border-color: rgba(230, 90, 40, 0.28);
+  color: #e65a28;
+}
+
+.badge-strong-sell {
+  background: var(--bear-dim);
+  border-color: var(--bear-border);
+  color: var(--bear);
+}
+
+/* ══════════════════════════════════════════
+   SENTIMENT BAR
+══════════════════════════════════════════ */
+.sentiment-bar {
+  height: 6px;
+  background: linear-gradient(90deg, var(--bear), rgba(255, 255, 255, 0.08), var(--bull));
+  border-radius: 3px;
+  position: relative;
+}
+
+/* ══════════════════════════════════════════
+   SCROLLBAR
+══════════════════════════════════════════ */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-base);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-active);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-accent);
+}
+
+/* ══════════════════════════════════════════
+   SKELETON LOADER
+══════════════════════════════════════════ */
+.holo-skeleton {
+  background: linear-gradient(90deg,
+      var(--bg-panel-alt) 25%,
+      var(--bg-elevated) 50%,
+      var(--bg-panel-alt) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* ══════════════════════════════════════════
+   FUNCTIONAL FLASH ANIMATIONS (price ticks, PnL)
+   — kept because they're informational not decorative
+══════════════════════════════════════════ */
+@keyframes flashUp {
+  0% {
+    background: rgba(52, 211, 153, 0.15);
+  }
+
+  100% {
+    background: transparent;
+  }
+}
+
+@keyframes flashDown {
+  0% {
+    background: rgba(248, 81, 73, 0.15);
+  }
+
+  100% {
+    background: transparent;
+  }
+}
+
+.price-flash-up {
+  animation: flashUp 0.6s ease-out forwards;
+}
+
+.price-flash-down {
+  animation: flashDown 0.6s ease-out forwards;
+}
+
+@keyframes profitGlow {
+  0% {
+    background: rgba(52, 211, 153, 0.10);
+  }
+
+  100% {
+    background: transparent;
+  }
+}
+
+@keyframes lossGlow {
+  0% {
+    background: rgba(248, 81, 73, 0.10);
+  }
+
+  100% {
+    background: transparent;
+  }
+}
+
+.pnl-flash-profit {
+  animation: profitGlow 1s ease-out forwards;
+}
+
+.pnl-flash-loss {
+  animation: lossGlow 1s ease-out forwards;
+}
+
+/* ══════════════════════════════════════════
+   STOCK MARKET LOADER ANIMATIONS
+══════════════════════════════════════════ */
+@keyframes fadeUpIn {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes drawChart {
+  from {
+    stroke-dashoffset: 1000;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes marketPulse {
+  0% {
+    transform: translate(-50%, -50%) scale(0.9);
+    opacity: 0.3;
+  }
+
+  100% {
+    transform: translate(-50%, -50%) scale(1.1);
+    opacity: 0.6;
+  }
+}
+
+@keyframes marketLoaderProgress {
+  0% {
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+
+  100% {
+    transform: scaleX(1);
+    transform-origin: left;
+  }
+}
+
+@keyframes tickerScroll {
+  0% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(-33.333333%);
+  }
+}
+
+/* ══════════════════════════════════════════
+   RECHARTS OVERRIDES
+══════════════════════════════════════════ */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: var(--chart-grid) !important;
+}
+
+.recharts-text {
+  fill: var(--chart-axis) !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 10px !important;
+}
+
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: var(--bg-elevated) !important;
+  border: 1px solid var(--border-active) !important;
+  border-radius: 6px !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  color: var(--text-primary) !important;
+}
+
+/* ══════════════════════════════════════════
+   STATE HELPERS
+══════════════════════════════════════════ */
+.positive-glow {
+  /* subtle left indicator only */
+  border-left: 3px solid var(--bull);
+}
+
+.negative-glow {
+  border-left: 3px solid var(--bear);
+}
+
+/* Generic header separator line */
+.header-line {
+  height: 1px;
+  background: var(--border-subtle);
+  opacity: 1;
+}
+
+/* ══════════════════════════════════════════
+   TABS
+══════════════════════════════════════════ */
+.tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--border-subtle);
+  overflow-x: auto;
+}
+
+.tab-btn {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 10px 16px;
+  cursor: pointer;
+  white-space: nowrap;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tab-btn:hover {
+  color: var(--text-secondary);
+}
+
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ══════════════════════════════════════════
+   WELCOME SPLASH (ArcReactor spinner) — keep
+   spin animation only for splash screen
+══════════════════════════════════════════ */
+@keyframes cornerSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes arcPulse {
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.75;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes arcBlink {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.2;
+  }
+}
+
+@keyframes splashProgress {
+  from {
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+
+  to {
+    transform: scaleX(1);
+    transform-origin: left;
+  }
+}
+
+/* ══════════════════════════════════════════
+   THEME TOGGLE BUTTON
+══════════════════════════════════════════ */
+.theme-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-active);
+  color: var(--text-secondary);
+  padding: 4px 10px 4px 4px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.theme-toggle-btn:hover {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+.theme-toggle-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  transition: transform 0.3s ease;
+}
+
+/* ══════════════════════════════════════════
+   LIGHT MODE
+══════════════════════════════════════════ */
+body[data-theme="light"] {
+  --bg-base: #4556b9e0;
+  --bg-panel: #e8e6e6;
+  --bg-panel-alt: #1ab7d6;
+  --bg-elevated: #1f354a;
+  --border-subtle: #d0d7de;
+  --border-active: #b1bac4;
+  --text-primary: #040405;
+  --text-secondary: #656d76;
+  --text-muted: #8c959f;
+  --chart-grid: rgba(208, 215, 222, 0.7);
+  --chart-axis: #8c959f;
+}

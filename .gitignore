@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+.env
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
+# Node
+node_modules/
+dist/
+build/
+.npm/
+
+# OS/Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# History files (From previous request)
+*.xlsx
