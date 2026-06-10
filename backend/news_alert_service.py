@@ -1,30 +1,26 @@
 """
 News Alert Service — monitors market news categories and sends Telegram notifications.
-Version 2: Multi-category + TTL-based deduplication (headlines expire after TTL_HOURS).
+Version 3: Multi-category + SQLite-based deduplication and TTL expiration.
 """
-import json
 import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List
-from pathlib import Path
 
 from sentiment_analysis import sentiment_analyzer
 from telegram_notifier import send_telegram_message
 from config import settings
+from database.db import SessionLocal
+import database.crud as db_crud
 
 logger = logging.getLogger(__name__)
 
-# ── Persistence path ──────────────────────────────────────────────────────────
-_DATA_DIR  = settings.DATA_DIR
-_SENT_FILE = _DATA_DIR / "sent_news.json"
-
 # ── Tunables ─────────────────────────────────────────────────────────────────
-_MAX_STORED_HEADLINES = 500     # cap JSON file growth
+_MAX_STORED_HEADLINES = 500     # cap DB table growth
 _MAX_ALERTS_PER_CYCLE = 5       # max Telegram messages per check cycle
 _DEDUP_TTL_HOURS      = 12      # headlines expire from dedup after this many hours
 
-# Categories to monitor (add/remove as needed)
+# Categories to monitor
 _WATCHED_CATEGORIES = [
     "Global Markets",
     "Indian Markets",
@@ -36,8 +32,7 @@ _WATCHED_CATEGORIES = [
 class NewsAlertService:
     """
     Checks multiple news categories on a configurable interval and sends
-    unseen headlines to Telegram. Uses TTL-based deduplication — headlines
-    expire after _DEDUP_TTL_HOURS so they won't be silently blocked forever.
+    unseen headlines to Telegram. Uses TTL-based database deduplication.
     """
 
     # ── Symbol → label map ────────────────────────────────────────────────────
@@ -89,10 +84,10 @@ class NewsAlertService:
     ]
 
     def __init__(self):
-        # sent_headlines: dict of {title: ISO-timestamp-string}
+        # Load active sent headlines into RAM cache
         self.sent_headlines: Dict[str, str] = self.load_sent_headlines()
         self._purge_expired()
-        logger.info(f"[NewsAlert] Loaded {len(self.sent_headlines)} active (non-expired) headline(s).")
+        logger.info(f"[NewsAlert] Loaded {len(self.sent_headlines)} active (non-expired) headline(s) from database.")
         self.last_cycle_time: datetime | None = None
         self.last_cycle_sent: int = 0
         self.total_sent: int = 0
@@ -110,46 +105,25 @@ class NewsAlertService:
             return True  # corrupt timestamp → treat as expired
 
     def _purge_expired(self) -> int:
-        """Remove headlines that have exceeded the TTL. Returns count removed."""
-        before = len(self.sent_headlines)
-        self.sent_headlines = {
-            title: ts for title, ts in self.sent_headlines.items()
-            if not self._is_expired(ts)
-        }
-        removed = before - len(self.sent_headlines)
+        """Remove headlines that have exceeded the TTL from database. Returns count removed."""
+        cutoff_time = self._now_utc() - timedelta(hours=_DEDUP_TTL_HOURS)
+        with SessionLocal() as db:
+            removed = db_crud.purge_expired_headlines(db, cutoff_time)
+            # Re-read active list to keep RAM cache in sync
+            self.sent_headlines = db_crud.load_sent_headlines(db)
         if removed:
-            logger.info(f"[NewsAlert] Purged {removed} expired headline(s) from dedup cache.")
+            logger.info(f"[NewsAlert] Purged {removed} expired headline(s) from database cache.")
         return removed
 
     def load_sent_headlines(self) -> Dict[str, str]:
-        """Load sent_news.json. Supports both old list format and new dict format."""
-        try:
-            if _SENT_FILE.exists():
-                with open(_SENT_FILE, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                if isinstance(data, list):
-                    # Migrate old format: treat all as sent 100 hours ago (will all expire)
-                    old_ts = (self._now_utc() - timedelta(hours=100)).isoformat()
-                    logger.info("[NewsAlert] Migrating old list-format sent_news.json to TTL format.")
-                    return {title: old_ts for title in data}
-                if isinstance(data, dict):
-                    return data
-        except Exception as e:
-            logger.warning(f"[NewsAlert] Could not load sent_news.json: {e}")
-        return {}
+        """Load sent headlines from database."""
+        with SessionLocal() as db:
+            return db_crud.load_sent_headlines(db)
 
     def save_sent_headlines(self) -> None:
-        """Persist sent headlines dict to JSON, capped at _MAX_STORED_HEADLINES."""
-        try:
-            _DATA_DIR.mkdir(parents=True, exist_ok=True)
-            # Keep only the most recent entries if over limit
-            if len(self.sent_headlines) > _MAX_STORED_HEADLINES:
-                sorted_items = sorted(self.sent_headlines.items(), key=lambda x: x[1], reverse=True)
-                self.sent_headlines = dict(sorted_items[:_MAX_STORED_HEADLINES])
-            with open(_SENT_FILE, "w", encoding="utf-8") as f:
-                json.dump(self.sent_headlines, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            logger.warning(f"[NewsAlert] Could not save sent_news.json: {e}")
+        """Capse database sent headlines table growth."""
+        with SessionLocal() as db:
+            db_crud.cap_sent_headlines_growth(db, _MAX_STORED_HEADLINES)
 
     def is_already_sent(self, title: str) -> bool:
         """Return True if this title was sent within the TTL window."""
@@ -240,7 +214,6 @@ class NewsAlertService:
         lines.append(f'<a href="{item.url}">📖 Read full article</a>')
         return "\n".join(lines), asset_key, relevance
 
-
     # ── Core Check Cycle ──────────────────────────────────────────────────────
 
     async def check_and_notify(self) -> int:
@@ -265,7 +238,6 @@ class NewsAlertService:
         filtered.sort(key=lambda x: x.published, reverse=True)
 
         sent_count = 0
-        newly_sent: Dict[str, str] = {}
 
         for item in filtered:
             if sent_count >= _MAX_ALERTS_PER_CYCLE:
@@ -280,13 +252,15 @@ class NewsAlertService:
             success = await send_telegram_message(message, asset_key, category, relevance)
             
             if success:
-                newly_sent[item.title] = self._now_utc().isoformat()
+                sent_time = self._now_utc()
+                with SessionLocal() as db:
+                    db_crud.add_sent_headline(db, item.title, sent_time)
+                self.sent_headlines[item.title] = sent_time.isoformat()
                 sent_count += 1
                 logger.info(f"[NewsAlert] Sent: {item.title[:60]}…")
                 await asyncio.sleep(0.5)
 
-        if newly_sent:
-            self.sent_headlines.update(newly_sent)
+        if sent_count > 0:
             self.save_sent_headlines()
 
         self.last_cycle_time = self._now_utc()

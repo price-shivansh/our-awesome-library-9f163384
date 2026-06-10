@@ -71,19 +71,40 @@ async def update_positions():
 
 @router.get("/chart/{symbol}/{interval}")
 async def get_chart(symbol: str, interval: str):
-    """Reuse existing data_fetcher logic to query historical chart data."""
+    """Reuse existing data_fetcher logic to query historical chart data with sufficient history."""
+    interval_lower = interval.lower()
+    
+    # Mapping intervals to appropriate periods to guarantee minimum candle counts:
+    # 1m  -> 300 candles (needs period="7d")
+    # 5m  -> 200 candles (needs period="30d")
+    # 15m -> 150 candles (needs period="30d")
+    # 1H  -> 200 candles (needs period="60d")
+    # 4H  -> 200 candles (needs period="1y")
+    # 1D  -> 365 candles (needs period="2y")
     period_map = {
-        "1m": "1d", "3m": "5d", "5m": "5d",
-        "15m": "5d", "1h": "1mo", "1d": "6mo",
+        "1m": "7d",
+        "3m": "30d",
+        "5m": "30d",
+        "15m": "30d",
+        "1h": "60d",
+        "4h": "1y",
+        "1d": "2y",
     }
-    period = period_map.get(interval, "5d")
+    period = period_map.get(interval_lower, "30d")
+    
+    # Resolve exact yfinance interval
+    yf_interval = interval_lower
+    if interval_lower == "3m":
+        yf_interval = "5m"  # Fallback to 5m as yfinance doesn't support 3m natively
+    
     try:
-        yf_interval = "5m" if interval == "3m" else interval
         data = await data_fetcher.get_historical_data(
             symbol, period=period, interval=yf_interval
         )
         if not data:
             raise HTTPException(status_code=404, detail="Data not found")
+        
+        print(f"[Paper Trading Chart] Timeframe: {interval}, Candles Loaded: {len(data)}")
         return data
     except HTTPException:
         raise

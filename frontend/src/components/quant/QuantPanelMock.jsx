@@ -1,208 +1,361 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { analyzeSymbolV3 } from '../../api/quantService';
 import {
-  TrendingUp, TrendingDown, Target, ShieldAlert, CheckCircle2, Activity, Newspaper, BarChart2, Info
+  TrendingUp, TrendingDown, Target, ShieldAlert, CheckCircle2, Activity, Newspaper, Info, AlertTriangle, AlertCircle
 } from 'lucide-react';
 
 const QuantPanelMock = ({ symbol, onApplyPlan }) => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('Overview');
 
-  // Static mock data for Phase 1 UI
-  const mockData = {
-    symbol: symbol,
-    bias: 'Bullish',
-    confidence_score: 82.5,
-    technical_score: 85.0,
-    sentiment_score: 76.6,
-    trade_plan: {
-      entry_zone: { min: 100.5, max: 102.0 },
-      stop_loss: 98.0,
-      target_1: 105.0,
-      target_2: 108.0,
-      risk_reward_ratio: 2.0
-    },
-    explanation: {
-      summary: "Strong technical setup supported by positive news sentiment. The asset has recently crossed above major moving averages and is showing strong accumulation patterns in the lower timeframes.",
-      technical_details: [
-        "RSI is recovering from oversold territory (currently at 45).",
-        "MACD shows a recent bullish crossover on the 1H chart.",
-        "Price is trading above the 50 EMA, acting as dynamic support.",
-        "Volume profile indicates strong accumulation at the 100 level."
-      ],
-      sentiment_details: [
-        "Recent news sentiment is 76% bullish across 14 major outlets.",
-        "Key headlines mention strong quarterly guidance and potential upgrades.",
-        "Social media volume has spiked 120% in the last 4 hours."
-      ]
+  useEffect(() => {
+    if (!symbol) return;
+    
+    let mounted = true;
+    const fetchData = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await analyzeSymbolV3(symbol);
+        if (mounted) {
+          setData(result);
+        }
+      } catch (err) {
+        if (mounted) {
+          setError(err.message || 'Failed to fetch quant analysis');
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+    
+    fetchData();
+    return () => { mounted = false; };
+  }, [symbol]);
+
+  if (!symbol) {
+    return (
+      <div style={{ padding: '24px', textAlign: 'center', background: 'var(--bg-panel)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: 'var(--text-secondary)', fontFamily: 'Inter, sans-serif' }}>
+        Select an asset to view Quant Intelligence
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div style={{ padding: '24px', background: 'var(--bg-panel)', border: '1px solid var(--border-subtle)', borderRadius: '6px', fontFamily: 'Inter, sans-serif', minHeight: '380px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+        <span className="holo-text" style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>[AI WORKSTATION] ANALYZING {symbol}…</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ padding: '16px', background: 'var(--bg-panel)', border: '1px solid var(--bear-border)', borderRadius: '6px', fontFamily: 'Inter, sans-serif', color: 'var(--bear)', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+        <AlertCircle size={18} style={{ shrink: 0, marginTop: '2px' }} />
+        <div>
+          <h4 style={{ fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>Analysis Offline</h4>
+          <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) return null;
+
+  const bias = data.bias || 'Neutral';
+  const tradeState = data.trade_state || 'WAIT';
+  
+  const getBiasColor = (b) => {
+    switch (b.toLowerCase()) {
+      case 'bullish': return 'var(--bull)';
+      case 'bearish': return 'var(--bear)';
+      default: return 'var(--warn)';
     }
   };
 
-  const getBiasColor = (bias) => {
-    return 'text-[#00ff88] bg-[#00ff88]/10 border-[#00ff88]/20';
+  const getBiasBg = (b) => {
+    switch (b.toLowerCase()) {
+      case 'bullish': return 'var(--bull-dim)';
+      case 'bearish': return 'var(--bear-dim)';
+      default: return 'var(--warn-dim)';
+    }
+  };
+
+  const getBiasBorder = (b) => {
+    switch (b.toLowerCase()) {
+      case 'bullish': return 'var(--bull-border)';
+      case 'bearish': return 'var(--bear-border)';
+      default: return 'var(--warn-border)';
+    }
   };
 
   const handleApply = () => {
-    if (onApplyPlan) {
+    if (onApplyPlan && data.trade_outlook) {
       onApplyPlan({
-        direction: 'BUY',
-        stopLoss: mockData.trade_plan.stop_loss,
-        target: mockData.trade_plan.target_1,
+        direction: bias.toUpperCase() === 'BEARISH' ? 'SELL' : 'BUY',
+        stopLoss: data.trade_outlook.stop_loss || 0,
+        target: data.trade_outlook.target_1 || 0,
         symbol: symbol
       });
     }
   };
 
-  const tabs = ['Overview', 'Technical', 'News'];
+  const tabs = ['Overview', 'Drivers', 'Risk & Regime'];
 
   return (
-    <div className="flex flex-col bg-[#030f1e] border border-[#00ff88]/20 rounded-md relative min-h-min">
-      {/* Corner accents */}
-      <span className="absolute top-0 left-0 w-2 h-2 border-t border-l border-[#00ff88]" />
-      <span className="absolute top-0 right-0 w-2 h-2 border-t border-r border-[#00ff88]" />
-      <span className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-[#00ff88]" />
-      <span className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-[#00ff88]" />
-
-      {/* Header Summary Row */}
-      <div className="flex justify-between items-center px-4 py-3 bg-[#00ff88]/5 border-b border-[#00ff88]/10 flex-wrap gap-2">
-        <div className="flex items-center gap-3">
-          <Activity size={18} className="text-[#00ff88]" />
-          <h3 className="text-sm font-bold text-white font-['Orbitron'] tracking-wider">
-            QUANT DECISION ENGINE
-          </h3>
-          <span className={`px-2 py-0.5 rounded text-xs font-bold border flex items-center gap-1 ${getBiasColor(mockData.bias)}`}>
-            <TrendingUp size={14} /> {mockData.bias}
+    <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg-panel)', border: '1px solid var(--border-subtle)', borderRadius: '6px', overflow: 'hidden', height: '100%', fontFamily: 'Inter, sans-serif' }}>
+      
+      {/* Panel Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-panel-alt)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Activity size={13} style={{ color: 'var(--accent)' }} />
+          <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '0.05em' }}>QUANT DECISION ENGINE</span>
+          <span style={{
+            fontSize: '9px', fontWeight: 600, padding: '2px 6px', borderRadius: '3px',
+            background: getBiasBg(bias), border: `1px solid ${getBiasBorder(bias)}`, color: getBiasColor(bias)
+          }}>
+            {bias.toUpperCase()}
           </span>
         </div>
-        <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1.5 hidden sm:flex">
-                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Tech</span>
-                <span className="text-sm font-bold text-gray-300">{mockData.technical_score}</span>
-            </div>
-            <div className="flex items-center gap-1.5 hidden sm:flex">
-                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Sent</span>
-                <span className="text-sm font-bold text-gray-300">{mockData.sentiment_score}</span>
-            </div>
-            <div className="h-4 w-px bg-gray-700 hidden sm:block"></div>
-            <div className="flex items-center gap-2">
-                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Confidence</span>
-                <span className="text-lg font-black text-[#00ff88] drop-shadow-[0_0_8px_rgba(0,255,136,0.5)]">
-                    {mockData.confidence_score}%
-                </span>
-            </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <span style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>STATE:</span>
+          <span style={{
+            fontSize: '9px', fontWeight: 700, padding: '1px 4px', borderRadius: '2px',
+            background: tradeState === 'TRADE' ? 'var(--bull-dim)' : 'var(--warn-dim)',
+            color: tradeState === 'TRADE' ? 'var(--bull)' : 'var(--warn)',
+            border: `1px solid ${tradeState === 'TRADE' ? 'var(--bull-border)' : 'var(--warn-border)'}`
+          }}>{tradeState}</span>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex px-4 border-b border-[#00ff88]/10 bg-black/20">
-        {tabs.map(tab => (
+      <div style={{ display: 'flex', background: 'rgba(0,0,0,0.15)', borderBottom: '1px solid var(--border-subtle)' }}>
+        {tabs.map(tab => {
+          const active = activeTab === tab;
+          return (
             <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`py-2 px-4 text-xs font-['Orbitron'] tracking-wider transition-colors border-b-2 ${activeTab === tab ? 'text-[#00ff88] border-[#00ff88] bg-[#00ff88]/5' : 'text-gray-500 border-transparent hover:text-gray-300'}`}
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              style={{
+                flex: 1, padding: '8px 12px', background: active ? 'var(--bg-panel)' : 'transparent',
+                border: 'none', borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
+                color: active ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: '11px', fontWeight: active ? 600 : 500,
+                cursor: 'pointer', transition: 'all 0.12s'
+              }}
             >
-                {tab}
+              {tab}
             </button>
-        ))}
+          );
+        })}
       </div>
 
-      {/* Tab Content Area */}
-      <div className="p-4 flex flex-col gap-4">
+      {/* Content Area */}
+      <div style={{ padding: '14px', flex: 1, display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
         
-        {/* Overview Tab */}
         {activeTab === 'Overview' && (
-            <div className="flex flex-col lg:flex-row gap-6">
-                {/* Summary */}
-                <div className="flex-1">
-                    <p className="text-[#00eeff] font-medium text-xs font-['Share_Tech_Mono'] leading-relaxed mb-4">
-                    &gt; {mockData.explanation.summary}
-                    </p>
-                    
-                    <div className="grid grid-cols-2 gap-4 mt-2">
-                        <div className="bg-[#00ff88]/5 border border-[#00ff88]/10 rounded p-3">
-                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-1">Technical Score</span>
-                            <div className="text-xl font-bold text-white">{mockData.technical_score}</div>
-                        </div>
-                        <div className="bg-[#00ff88]/5 border border-[#00ff88]/10 rounded p-3">
-                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-1">Sentiment Score</span>
-                            <div className="text-xl font-bold text-white">{mockData.sentiment_score}</div>
-                        </div>
-                    </div>
+          <>
+            {/* Section A: Market Bias */}
+            <div>
+              <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.04em', marginBottom: '8px' }}>
+                Section A: Market Bias
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div style={{ background: 'var(--bg-panel-alt)', border: '1px solid var(--border-subtle)', borderRadius: '4px', padding: '8px 10px' }}>
+                  <span style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>Confidence Score</span>
+                  <div className="holo-value" style={{ fontSize: '16px', fontWeight: 600, color: 'var(--accent)', marginTop: '2px' }}>
+                    {data.confidence?.total?.toFixed(1) || 0}%
+                  </div>
                 </div>
+                <div style={{ background: 'var(--bg-panel-alt)', border: '1px solid var(--border-subtle)', borderRadius: '4px', padding: '8px 10px' }}>
+                  <span style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>Alignment Score</span>
+                  <div className="holo-value" style={{ fontSize: '16px', fontWeight: 600, color: 'var(--accent)', marginTop: '2px' }}>
+                    {data.timeframes?.alignment_score?.toFixed(1) || 0}%
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px', marginTop: '8px' }}>
+                <div style={{ background: 'var(--bg-panel-alt)', border: '1px solid var(--border-subtle)', borderRadius: '4px', padding: '8px 10px' }}>
+                  <span style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>Market Regime &amp; Structure</span>
+                  <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)', marginTop: '2px', textTransform: 'uppercase' }}>
+                    {data.regime?.label?.replace('_', ' ') || 'UNKNOWN'}
+                    {data.regime?.structure && <span style={{ color: 'var(--text-muted)', fontSize: '10px', marginLeft: '6px' }}>({data.regime.structure})</span>}
+                  </div>
+                </div>
+              </div>
+            </div>
 
-                {/* Trade Plan */}
-                <div className="w-full lg:w-[280px] shrink-0 bg-[#00ff88]/5 border border-[#00ff88]/20 rounded p-4">
-                    <h4 className="text-[10px] text-[#00ff88] font-bold uppercase tracking-widest mb-3 flex items-center gap-2">
-                    <Target size={12} /> Suggested Plan
-                    </h4>
-                    
-                    <div className="space-y-2 mb-4">
-                        <div className="flex justify-between items-center">
-                            <span className="text-xs text-gray-400 uppercase tracking-wider">Entry Zone</span>
-                            <span className="font-['Share_Tech_Mono'] text-white text-sm">{mockData.trade_plan.entry_zone.min.toFixed(2)} - {mockData.trade_plan.entry_zone.max.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-xs text-gray-400 uppercase tracking-wider flex items-center gap-1"><ShieldAlert size={10} className="text-[#ff2244]" /> Stop Loss</span>
-                            <span className="font-['Share_Tech_Mono'] text-[#ff2244] text-sm">{mockData.trade_plan.stop_loss.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-xs text-gray-400 uppercase tracking-wider">Target 1</span>
-                            <span className="font-['Share_Tech_Mono'] text-[#00ff88] text-sm">{mockData.trade_plan.target_1.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-xs text-gray-400 uppercase tracking-wider">Target 2</span>
-                            <span className="font-['Share_Tech_Mono'] text-[#00ff88] text-sm">{mockData.trade_plan.target_2.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between items-center pt-2 border-t border-[#00ff88]/10">
-                            <span className="text-xs text-gray-400 uppercase tracking-wider">Risk / Reward</span>
-                            <span className="font-['Share_Tech_Mono'] text-[#ffaa00] text-sm">1 : {mockData.trade_plan.risk_reward_ratio}</span>
-                        </div>
+            {/* Section B: Trade Outlook */}
+            {data.trade_outlook && (bias.toLowerCase() !== 'neutral') && (
+              <div>
+                <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.04em', marginBottom: '8px' }}>
+                  Section B: Trade Outlook
+                </div>
+                <div style={{ background: 'var(--bg-panel-alt)', border: '1px solid var(--border-subtle)', borderRadius: '4px', padding: '10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '6px', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Entry Zone</span>
+                    <span className="holo-value" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {data.trade_outlook.entry_zone ? `${data.trade_outlook.entry_zone.min?.toFixed(2)} - ${data.trade_outlook.entry_zone.max?.toFixed(2)}` : 'N/A'}
+                    </span>
+                  </div>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '6px' }}>
+                    <div style={{ background: 'rgba(248,81,73,0.05)', border: '1px solid var(--bear-border)', borderRadius: '3px', padding: '6px 8px' }}>
+                      <span style={{ fontSize: '9px', color: 'var(--bear)' }}>Stop Loss</span>
+                      <div className="holo-value" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginTop: '2px' }}>
+                        {data.trade_outlook.stop_loss?.toFixed(2) || 'N/A'}
+                      </div>
                     </div>
+                    <div style={{ background: 'rgba(52,211,153,0.05)', border: '1px solid var(--bull-border)', borderRadius: '3px', padding: '6px 8px' }}>
+                      <span style={{ fontSize: '9px', color: 'var(--bull)' }}>Target 1</span>
+                      <div className="holo-value" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginTop: '2px' }}>
+                        {data.trade_outlook.target_1?.toFixed(2) || 'N/A'}
+                      </div>
+                    </div>
+                  </div>
 
-                    <button 
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-subtle)', paddingTop: '6px', fontSize: '10px' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Target 2 (Extended)</span>
+                    <span className="holo-value" style={{ color: 'var(--text-primary)' }}>{data.trade_outlook.target_2?.toFixed(2) || 'N/A'}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', fontSize: '10px' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Risk / Reward Ratio</span>
+                    <span className="holo-value" style={{ color: 'var(--warn)', fontWeight: 600 }}>1 : {data.trade_outlook.risk_reward_ratio || 'N/A'}</span>
+                  </div>
+
+                  <button
                     onClick={handleApply}
-                    className="w-full bg-[#00ff88]/20 hover:bg-[#00ff88]/30 border border-[#00ff88] text-[#00ff88] font-['Orbitron'] text-xs tracking-wider py-2 rounded transition-colors"
-                    >
-                    APPLY TO ORDER FORM
-                    </button>
+                    style={{
+                      width: '100%', marginTop: '10px', background: 'var(--accent-dim)', border: '1px solid var(--accent-border)',
+                      color: 'var(--accent)', padding: '6px 10px', fontSize: '11px', fontWeight: 600, borderRadius: '4px',
+                      cursor: 'pointer', transition: 'all 0.15s'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(52, 211, 153, 0.20)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'var(--accent-dim)'}
+                  >
+                    APPLY PLAN TO ORDER
+                  </button>
                 </div>
-            </div>
+              </div>
+            )}
+
+            {/* Section D: AI Summary */}
+            {data.explanation?.ai_summary && (
+              <div>
+                <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.04em', marginBottom: '6px' }}>
+                  Section D: AI Summary
+                </div>
+                <div style={{ background: 'var(--bg-panel-alt)', border: '1px solid var(--border-subtle)', borderRadius: '4px', padding: '10px 12px', fontSize: '11px', lineHeight: 1.45, color: '#a78bfa' }}>
+                  {data.explanation.ai_summary}
+                </div>
+              </div>
+            )}
+          </>
         )}
 
-        {/* Technical Tab */}
-        {activeTab === 'Technical' && (
-            <div className="bg-black/20 rounded p-4 border border-gray-800">
-                <h4 className="text-[11px] text-[#00ff88] font-bold uppercase tracking-widest mb-3 flex items-center gap-2">
-                    <BarChart2 size={14} /> Technical Factors
-                </h4>
-                <div className="max-h-[160px] overflow-y-auto pr-2" style={{ scrollbarWidth: 'thin', scrollbarColor: '#00ff88 transparent' }}>
-                    <ul className="space-y-3">
-                        {mockData.explanation.technical_details.map((d, i) => (
-                        <li key={i} className="text-xs text-gray-300 flex items-start gap-2 leading-relaxed">
-                            <CheckCircle2 size={14} className="text-[#00ff88] mt-0.5 shrink-0" />
-                            <span>{d}</span>
-                        </li>
-                        ))}
-                    </ul>
-                </div>
+        {/* Drivers Tab */}
+        {activeTab === 'Drivers' && (
+          <>
+            {/* Technical Drivers */}
+            <div>
+              <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.04em', marginBottom: '6px' }}>
+                Technical Drivers
+              </div>
+              <ul style={{ paddingLeft: '14px', margin: 0, fontSize: '11px', color: 'var(--text-primary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {data.explanation?.supporting_factors && data.explanation.supporting_factors.length > 0 ? (
+                  data.explanation.supporting_factors.map((f, i) => <li key={i} style={{ marginBottom: '2px' }}>{f}</li>)
+                ) : (
+                  <li style={{ color: 'var(--text-muted)', listStyleType: 'none', marginLeft: '-14px' }}>No specific technical drivers.</li>
+                )}
+              </ul>
             </div>
+
+            {/* News Drivers */}
+            <div>
+              <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.04em', marginBottom: '6px' }}>
+                News Drivers
+              </div>
+              <ul style={{ paddingLeft: '14px', margin: 0, fontSize: '11px', color: 'var(--text-primary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {data.explanation?.news_drivers && data.explanation.news_drivers.length > 0 ? (
+                  data.explanation.news_drivers.map((d, i) => <li key={i} style={{ marginBottom: '2px' }}>{d}</li>)
+                ) : (
+                  <li style={{ color: 'var(--text-muted)', listStyleType: 'none', marginLeft: '-14px' }}>No news drivers registered.</li>
+                )}
+              </ul>
+            </div>
+
+            {/* Risk Warnings */}
+            <div>
+              <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.04em', marginBottom: '6px' }}>
+                Weakening Factors
+              </div>
+              <ul style={{ paddingLeft: '14px', margin: 0, fontSize: '11px', color: 'var(--text-primary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {data.explanation?.weakening_factors && data.explanation.weakening_factors.length > 0 ? (
+                  data.explanation.weakening_factors.map((w, i) => <li key={i} style={{ marginBottom: '2px' }}>{w}</li>)
+                ) : (
+                  <li style={{ color: 'var(--text-muted)', listStyleType: 'none', marginLeft: '-14px' }}>No significant weakening factors.</li>
+                )}
+              </ul>
+            </div>
+          </>
         )}
 
-        {/* News Tab */}
-        {activeTab === 'News' && (
-            <div className="bg-black/20 rounded p-4 border border-gray-800">
-                <h4 className="text-[11px] text-[#aa44ff] font-bold uppercase tracking-widest mb-3 flex items-center gap-2">
-                    <Newspaper size={14} /> Sentiment & News Context
-                </h4>
-                <div className="max-h-[160px] overflow-y-auto pr-2" style={{ scrollbarWidth: 'thin', scrollbarColor: '#aa44ff transparent' }}>
-                    <ul className="space-y-3">
-                        {mockData.explanation.sentiment_details.map((d, i) => (
-                        <li key={i} className="text-xs text-gray-300 flex items-start gap-2 leading-relaxed">
-                            <Info size={14} className="text-[#aa44ff] mt-0.5 shrink-0" />
-                            <span>{d}</span>
-                        </li>
-                        ))}
-                    </ul>
+        {/* Risk & Regime Tab */}
+        {activeTab === 'Risk & Regime' && (
+          <>
+            {/* Risk Events */}
+            <div>
+              <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.04em', marginBottom: '6px' }}>
+                Risk Factors &amp; Events
+              </div>
+              {data.risk_events && data.risk_events.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {data.risk_events.map((e, idx) => (
+                    <div key={idx} style={{ padding: '8px 10px', background: 'rgba(248,81,73,0.05)', border: '1px solid var(--bear-border)', borderRadius: '4px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)' }}>{e.event}</span>
+                        <span style={{ fontSize: '8px', fontWeight: 700, padding: '1px 4px', borderRadius: '2px', background: 'var(--bear)', color: '#fff' }}>{e.impact} IMPACT</span>
+                      </div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{e.advisory}</div>
+                      <div style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: '2px' }}>Time: {e.minutes_away} minutes away | Penalty: -{e.penalty} pts</div>
+                    </div>
+                  ))}
                 </div>
+              ) : (
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>No immediate risk events detected.</div>
+              )}
             </div>
+
+            {/* Regime Context */}
+            {data.explanation?.regime_context && (
+              <div>
+                <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.04em', marginBottom: '6px' }}>
+                  Regime Context &amp; Details
+                </div>
+                <div style={{ background: 'var(--bg-panel-alt)', border: '1px solid var(--border-subtle)', borderRadius: '4px', padding: '10px', fontSize: '11px', lineHeight: 1.4, color: 'var(--text-secondary)' }}>
+                  {data.explanation.regime_context}
+                </div>
+              </div>
+            )}
+
+            {/* Invalidation Conditions */}
+            {data.explanation?.invalidation_conditions && data.explanation.invalidation_conditions.length > 0 && (
+              <div>
+                <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.04em', marginBottom: '6px' }}>
+                  Plan Invalidation Conditions
+                </div>
+                <ul style={{ paddingLeft: '14px', margin: 0, fontSize: '11px', color: 'var(--text-primary)', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  {data.explanation.invalidation_conditions.map((cond, i) => (
+                    <li key={i}>{cond}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
         )}
 
       </div>

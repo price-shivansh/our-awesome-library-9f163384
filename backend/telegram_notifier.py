@@ -7,6 +7,9 @@ import logging
 import json
 from pathlib import Path
 from config import settings
+from database.db import SessionLocal
+from database.models import TelegramSubscriber
+import database.crud as db_crud
 
 logger = logging.getLogger(__name__)
 
@@ -28,73 +31,66 @@ DEFAULT_FILTERS = {
 
 # ── Subscriber Manager ────────────────────────────────────────────────────────
 class TelegramSubscriberManager:
-    """Manages persistent storage of Telegram chat IDs and their filter preferences."""
+    """Manages persistent storage of Telegram chat IDs and their filter preferences in the database."""
     def __init__(self):
-        self.file_path = settings.DATA_DIR / "telegram_subscribers.json"
         self.subscribers = {}
         self.load_subscribers()
         self._migrate_legacy_id()
 
     def load_subscribers(self) -> None:
         try:
-            if self.file_path.exists():
-                with open(self.file_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    subs = data.get("subscribers", {})
-                    # Migrate old list format to dict format
-                    if isinstance(subs, list):
-                        logger.info("[Telegram] Migrated legacy subscriber list to preference-based format.")
-                        self.subscribers = {str(chat_id): {"is_active": True, "filters": dict(DEFAULT_FILTERS)} for chat_id in subs}
-                        self.save_subscribers()
-                    else:
-                        self.subscribers = subs
+            with SessionLocal() as db:
+                rows = db.query(TelegramSubscriber).all()
+                self.subscribers = {}
+                for r in rows:
+                    try:
+                        filters = json.loads(r.filters or "{}")
+                    except Exception:
+                        filters = dict(DEFAULT_FILTERS)
+                    self.subscribers[r.chat_id] = {
+                        "is_active": r.is_active,
+                        "filters": filters
+                    }
         except Exception as e:
-            logger.warning(f"[Telegram] Failed to load subscribers: {e}. Starting fresh.")
+            logger.warning(f"[Telegram] Failed to load subscribers from DB: {e}. Starting fresh.")
             self.subscribers = {}
 
     def save_subscribers(self) -> None:
-        try:
-            self.file_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.file_path, "w", encoding="utf-8") as f:
-                json.dump({"subscribers": self.subscribers}, f, indent=2)
-        except Exception as e:
-            logger.error(f"[Telegram] Failed to save subscribers: {e}")
+        """No-op as updates are written immediately to DB."""
+        pass
 
     def _migrate_legacy_id(self) -> None:
-        """Add legacy .env CHAT_ID with default filters if file was empty."""
-        if not self.subscribers:
-            legacy_id = getattr(settings, 'TELEGRAM_CHAT_ID', '').strip()
-            if legacy_id and legacy_id.lstrip('-').isdigit():
-                self.subscribers[str(legacy_id)] = {"is_active": True, "filters": dict(DEFAULT_FILTERS)}
-                self.save_subscribers()
-                logger.info(f"[Telegram] Added legacy TELEGRAM_CHAT_ID ({legacy_id}) as initial subscriber.")
+        """Add legacy .env CHAT_ID with default filters if DB is empty."""
+        with SessionLocal() as db:
+            total = db.query(TelegramSubscriber).count()
+            if total == 0:
+                legacy_id = getattr(settings, 'TELEGRAM_CHAT_ID', '').strip()
+                if legacy_id and legacy_id.lstrip('-').isdigit():
+                    db_sub = TelegramSubscriber(
+                        chat_id=legacy_id,
+                        is_active=True,
+                        filters=json.dumps(DEFAULT_FILTERS)
+                    )
+                    db.add(db_sub)
+                    db.commit()
+                    self.subscribers[str(legacy_id)] = {"is_active": True, "filters": dict(DEFAULT_FILTERS)}
+                    logger.info(f"[Telegram] Added legacy TELEGRAM_CHAT_ID ({legacy_id}) as initial subscriber in DB.")
 
     def update_user_status(self, chat_id: int, is_active: bool) -> bool:
         """Return True if status was changed, False if already in desired state."""
         cid = str(chat_id)
-        if cid not in self.subscribers:
-            if not is_active:
-                return False
-            self.subscribers[cid] = {"is_active": True, "filters": dict(DEFAULT_FILTERS)}
-            self.save_subscribers()
-            return True
-        else:
-            if self.subscribers[cid].get("is_active") == is_active:
-                return False
-            self.subscribers[cid]["is_active"] = is_active
-            self.save_subscribers()
-            return True
+        with SessionLocal() as db:
+            changed = db_crud.update_subscriber_status(db, cid, is_active, DEFAULT_FILTERS)
+            if changed:
+                self.load_subscribers()
+        return changed
 
     def toggle_filter(self, chat_id: int, filter_key: str) -> bool:
         """Toggles a filter and returns the new boolean value."""
         cid = str(chat_id)
-        if cid not in self.subscribers:
-            self.subscribers[cid] = {"is_active": True, "filters": dict(DEFAULT_FILTERS)}
-        
-        current = self.subscribers[cid]["filters"].get(filter_key, False)
-        new_val = not current
-        self.subscribers[cid]["filters"][filter_key] = new_val
-        self.save_subscribers()
+        with SessionLocal() as db:
+            new_val = db_crud.toggle_subscriber_filter(db, cid, filter_key, DEFAULT_FILTERS)
+            self.load_subscribers()
         return new_val
 
     def get_user_prefs(self, chat_id: int) -> dict:

@@ -1,17 +1,21 @@
 """
-News History Module
-Saves fetched news items to an Excel file as a persistent history log.
+news_history.py — News History Module
+Refactored to save fetched news to SQLite database instead of writing to static Excel files.
+Supports dynamic generation of Excel files on demand to preserve API compatibility.
 """
 import os
-from datetime import datetime
-from typing import List, Set
-from openpyxl import Workbook, load_workbook
+from datetime import datetime, timezone
+from typing import List, Set, Optional
+from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
 from models import NewsItem
+from config import settings
+from database.db import SessionLocal
+import database.crud as db_crud
 
-# Column definitions: (header label, attribute on NewsItem or custom, column width)
+# Column definitions for Excel generation
 COLUMNS = [
     ("News Heading",     "title",           60),
     ("News Link",        "url",             50),
@@ -29,32 +33,24 @@ BEARISH_FILL  = PatternFill("solid", fgColor="FEE2E2")   # light red
 NEUTRAL_FILL  = PatternFill("solid", fgColor="F1F5F9")   # light gray
 
 
-from config import settings
-
 def get_history_path(category: str = "General") -> str:
-    """Return the absolute path to the Excel file for a specific market category."""
-    history_dir = str(settings.HISTORY_DIR)
-    os.makedirs(history_dir, exist_ok=True)
-    filename = f"{category.lower().replace(' ', '_')}_news_history.xlsx"
-    return os.path.join(history_dir, filename)
+    """
+    Dynamically generates a styled Excel file from database records.
+    Returns the file path for the web server to send as response.
+    """
+    # Create temp directory
+    temp_dir = settings.DATA_DIR / "temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    excel_file = temp_dir / f"{category.lower().replace(' ', '_')}_news_history.xlsx"
 
+    with SessionLocal() as db:
+        articles = db_crud.get_news_articles(db, category, limit=1000)
 
-def _load_or_create_workbook(category: str):
-    """Return (workbook, sheet). Creates headers if the file is brand new."""
-    excel_file = get_history_path(category)
-    if os.path.exists(excel_file):
-        wb = load_workbook(excel_file)
-        ws = wb.active
-    else:
-        wb = Workbook()
-        ws = wb.active
-        ws.title = f"{category} News"
-        _write_headers(ws)
-    return wb, ws
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"{category} News"
 
-
-def _write_headers(ws):
-    """Write styled column headers in row 1."""
+    # Style Header Row
     for col_idx, (label, _, width) in enumerate(COLUMNS, start=1):
         cell = ws.cell(row=1, column=col_idx, value=label)
         cell.font = HEADER_FONT
@@ -62,110 +58,89 @@ def _write_headers(ws):
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=False)
         ws.column_dimensions[get_column_letter(col_idx)].width = width
     ws.row_dimensions[1].height = 20
-    ws.freeze_panes = "A2"         # freeze header row
+    ws.freeze_panes = "A2"
 
+    # Write Data
+    for row_idx, art in enumerate(articles, start=2):
+        sentiment = art.sentiment.upper()
+        fill = BULLISH_FILL if sentiment == "BULLISH" else (BEARISH_FILL if sentiment == "BEARISH" else NEUTRAL_FILL)
 
-def _get_existing_titles(ws) -> Set[str]:
-    """Return a set of news titles already stored (skip header row)."""
-    titles = set()
-    for row in ws.iter_rows(min_row=2, max_col=1, values_only=True):
-        if row[0]:
-            titles.add(str(row[0]).strip())
-    return titles
+        pub_str = art.published.strftime("%Y-%m-%d %H:%M:%S") if isinstance(art.published, datetime) else str(art.published)
+        created_str = art.created_at.strftime("%Y-%m-%d %H:%M:%S") if isinstance(art.created_at, datetime) else str(art.created_at)
 
+        row_data = [
+            art.headline,
+            art.url,
+            sentiment,
+            round(art.impact_score, 4),
+            art.source,
+            pub_str,
+            created_str,
+        ]
 
-def _row_fill(sentiment: str) -> PatternFill:
-    s = str(sentiment).upper()
-    if s == "BULLISH":
-        return BULLISH_FILL
-    if s == "BEARISH":
-        return BEARISH_FILL
-    return NEUTRAL_FILL
+        for col_idx, value in enumerate(row_data, start=1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.fill = fill
+            cell.alignment = Alignment(wrap_text=False, vertical="center")
+            if col_idx == 2 and art.url:
+                cell.hyperlink = art.url
+                cell.font = Font(color="2563EB", underline="single", name="Calibri")
+            else:
+                cell.font = Font(name="Calibri")
+
+    wb.save(str(excel_file))
+    return str(excel_file)
 
 
 def save_news_to_excel(news_items: List[NewsItem]) -> int:
     """
-    Append new (de-duplicated) news items to the Excel history file dynamically per category.
-    Returns the total number of rows that were actually added across all categories.
+    Saves news items directly to database 'news_articles' table.
+    Returns the total count of new records successfully added.
     """
     if not news_items:
         return 0
 
-    from collections import defaultdict
-    category_items = defaultdict(list)
+    news_dicts = []
     for item in news_items:
-        cat = getattr(item, "category", "General")
-        category_items[cat].append(item)
+        sentiment_val = getattr(item, "sentiment", "NEUTRAL")
+        if hasattr(sentiment_val, "value"):
+            sentiment_val = sentiment_val.value
+        sentiment_val = str(sentiment_val).upper().replace("SENTIMENTTYPE.", "")
 
-    saved_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    total_added = 0
+        news_dicts.append({
+            "headline": item.title.strip(),
+            "summary": "",
+            "source": item.source.strip(),
+            "url": item.url.strip(),
+            "published": item.published,
+            "sentiment": sentiment_val,
+            "impact_score": item.sentiment_score,
+            "category": getattr(item, "category", "General"),
+            "related_symbols": getattr(item, "related_symbols", []),
+        })
 
-    for cat, items in category_items.items():
-        wb, ws = _load_or_create_workbook(cat)
-        existing_titles = _get_existing_titles(ws)
-        added = 0
-
-        for item in items:
-            title = item.title.strip()
-            if title in existing_titles:
-                continue   # skip duplicate
-
-            row_data = [
-                title,
-                item.url,
-                str(item.sentiment).upper(),
-                round(item.sentiment_score, 4),
-                item.source,
-                item.published.strftime("%Y-%m-%d %H:%M:%S"),
-                saved_at,
-            ]
-
-            row_idx = ws.max_row + 1
-            fill = _row_fill(item.sentiment)
-
-            for col_idx, value in enumerate(row_data, start=1):
-                cell = ws.cell(row=row_idx, column=col_idx, value=value)
-                cell.fill = fill
-                cell.alignment = Alignment(wrap_text=False, vertical="center")
-                # Make the URL column a clickable hyperlink
-                if col_idx == 2 and item.url:
-                    cell.hyperlink = item.url
-                    cell.font = Font(color="2563EB", underline="single", name="Calibri")
-                else:
-                    cell.font = Font(name="Calibri")
-
-            existing_titles.add(title)
-            added += 1
-
-        if added > 0:
-            excel_file = get_history_path(cat)
-            wb.save(excel_file)
-            print(f"[news_history] Saved {added} new news items to {excel_file}")
-            
-        total_added += added
-
-    if total_added == 0:
-        print("[news_history] No new news items to save (all duplicates).")
-
-    return total_added
+    with SessionLocal() as db:
+        added_count = db_crud.create_news_articles_batch(db, news_dicts)
+    
+    if added_count > 0:
+        print(f"[news_history] Saved {added_count} new news items to database")
+    else:
+        print("[news_history] No new news items (all duplicates in database).")
+        
+    return added_count
 
 
 def get_history_stats(category: str = "General") -> dict:
-    """Return simple stats about the stored history for given category."""
-    excel_file = get_history_path(category)
-    if not os.path.exists(excel_file):
-        return {"total_rows": 0, "file_exists": False, "file_path": excel_file}
-
-    wb = load_workbook(excel_file, read_only=True)
-    ws = wb.active
-    total = ws.max_row - 1  # subtract header row
-    wb.close()
-
+    """Return stats about the database news records for category."""
+    with SessionLocal() as db:
+        from database.models import NewsArticle
+        total = db.query(NewsArticle).filter(NewsArticle.category == category).count()
     return {
-        "total_rows": max(0, total),
+        "total_rows": total,
         "file_exists": True,
-        "file_path": excel_file
+        "file_path": f"Database (Category: {category})"
     }
+
 
 def get_all_history_stats() -> dict:
     categories = ["Indian Markets", "Crypto", "Commodities", "Global Markets", "General"]
@@ -174,14 +149,8 @@ def get_all_history_stats() -> dict:
         stats[cat] = get_history_stats(cat)
     return stats
 
+
 def reset_history(category: str) -> bool:
-    """Delete the history file for the specified category. Returns True if deleted or did not exist."""
-    excel_file = get_history_path(category)
-    if os.path.exists(excel_file):
-        try:
-            os.remove(excel_file)
-            return True
-        except Exception as e:
-            print(f"Error deleting {excel_file}: {e}")
-            return False
-    return True
+    """Delete all news records in database for this category."""
+    with SessionLocal() as db:
+        return db_crud.delete_news_by_category(db, category)

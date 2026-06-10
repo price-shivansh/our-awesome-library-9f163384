@@ -65,7 +65,6 @@
 │   ├── sentiment_analysis.py   # Level 2 sentiment engine
 │   ├── news_history.py         # Excel news export
 │   ├── paper_trade.py          # Paper trading engine
-│   ├── paper_routes.py         # Paper trading API routes
 │   ├── backtest_engine.py      # Backtesting logic
 │   ├── market_stream.py        # WebSocket stream manager
 │   ├── telegram_notifier.py    # Telegram Bot API sender

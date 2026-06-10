@@ -27,3 +27,9 @@ Thumbs.db
 
 # History files (From previous request)
 *.xlsx
+
+# Backups
+backend/data/backup/
+
+# Nested Astro project
+adorable-aperture/

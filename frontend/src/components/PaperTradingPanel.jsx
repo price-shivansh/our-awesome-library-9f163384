@@ -112,14 +112,15 @@ const inputBase = {
 };
 
 // ── Pill button ───────────────────────────────────────────────────────────────
-const PillBtn = ({ active, onClick, children, color = '#00ff88' }) => (
-    <button onClick={onClick} style={{
+const PillBtn = ({ active, onClick, children, color = '#00ff88', disabled }) => (
+    <button onClick={disabled ? undefined : onClick} disabled={disabled} style={{
         fontFamily: 'Orbitron', fontSize: '0.5rem', letterSpacing: '0.12em',
-        padding: '4px 10px', cursor: 'pointer',
+        padding: '4px 10px', cursor: disabled ? 'not-allowed' : 'pointer',
         border: `1px solid ${active ? color : 'rgba(255,255,255,0.12)'}`,
         background: active ? `${color}1a` : 'transparent',
-        color: active ? color : 'rgba(255,255,255,0.35)',
+        color: disabled ? 'rgba(255,255,255,0.15)' : (active ? color : 'rgba(255,255,255,0.35)'),
         transition: 'all 0.15s',
+        opacity: disabled ? 0.5 : 1,
     }}>
         {children}
     </button>
@@ -401,17 +402,32 @@ export default function PaperTradingPanel() {
     const [chartType, setChartType] = useState('line');
 
     // ── Fetch chart ───────────────────────────────────────────────────────────
-    const fetchChart = useCallback(async (sym, interval) => {
+    const fetchChart = useCallback(async (sym, interval, isSilent = true) => {
+        if (chartLoading) return;
+        if (!isSilent) {
+            toast("Loading chart data...", "INFO");
+        }
         setChartLoading(true);
-        setChartData([]);
         try {
+            console.log("Reloading chart", sym, interval);
             const res = await axios.get(`${API}/paper-trading/chart/${encodeURIComponent(sym)}/${interval}`);
             const raw = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
             setChartData(raw);
             setChartSymbol(sym);
-        } catch { setChartData([]); }
-        finally { setChartLoading(false); }
-    }, []);
+            console.log("Candles loaded:", raw.length);
+            if (!isSilent) {
+                toast("Chart updated successfully", "SUCCESS");
+            }
+        } catch (e) {
+            console.error(e);
+            setChartData([]);
+            if (!isSilent) {
+                toast("Failed to refresh chart", "ERROR");
+            }
+        } finally {
+            setChartLoading(false);
+        }
+    }, [chartLoading]);
 
     // Initial load + update LTP from chart data
     useEffect(() => { fetchChart('RELIANCE.NS', '15m'); }, []); // eslint-disable-line
@@ -422,6 +438,29 @@ export default function PaperTradingPanel() {
             setLtp(chartData[chartData.length - 1]?.close ?? null);
         }
     }, [chartData]);
+
+    // Auto-refresh chart data silently based on selected timeframe
+    useEffect(() => {
+        let intervalTime = null;
+        const tf = timeframe.toLowerCase();
+        
+        if (tf === '1m') {
+            intervalTime = 30 * 1000; // 30 seconds
+        } else if (tf === '5m') {
+            intervalTime = 60 * 1000; // 60 seconds
+        } else if (tf === '15m') {
+            intervalTime = 5 * 60 * 1000; // 5 minutes
+        } else if (tf === '1h') {
+            intervalTime = 15 * 60 * 1000; // 15 minutes
+        }
+        
+        if (intervalTime) {
+            const timer = setInterval(() => {
+                fetchChart(symbol, timeframe, true);
+            }, intervalTime);
+            return () => clearInterval(timer);
+        }
+    }, [symbol, timeframe, fetchChart]);
 
     // Timeframe change
     const handleTimeframeChange = (tf) => {
@@ -693,22 +732,6 @@ export default function PaperTradingPanel() {
                         </span>
 
                         <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                            {/* Refresh Button */}
-                            <button
-                                onClick={() => fetchChart(symbol, timeframe)}
-                                disabled={chartLoading}
-                                title="Refresh Chart"
-                                style={{
-                                    background: 'transparent', border: 'none', color: chartLoading ? 'rgba(0,255,136,0.3)' : '#00ff88',
-                                    cursor: chartLoading ? 'not-allowed' : 'pointer', padding: '4px', display: 'flex', alignItems: 'center',
-                                    transition: 'transform 0.2s', transform: chartLoading ? 'rotate(180deg)' : 'none'
-                                }}
-                            >
-                                ⟳
-                            </button>
-
-                            <div style={{ width: '1px', height: '14px', background: 'rgba(0,255,136,0.15)', margin: '0 4px' }} />
-
                             {/* Timeframe */}
                             <div style={{ display: 'flex', gap: '3px' }}>
                                 {TIMEFRAMES.map(tf => (
@@ -720,10 +743,19 @@ export default function PaperTradingPanel() {
 
                             <div style={{ width: '1px', height: '14px', background: 'rgba(0,255,136,0.15)' }} />
 
-                            {/* Chart type */}
+                            {/* Chart type & Refresh */}
                             <div style={{ display: 'flex', gap: '3px' }}>
                                 <PillBtn active={chartType === 'line'} onClick={() => setChartType('line')}>LINE</PillBtn>
                                 <PillBtn active={chartType === 'candle'} onClick={() => setChartType('candle')} color="#00eeff">CANDLES</PillBtn>
+                                <PillBtn 
+                                    active={false} 
+                                    onClick={() => fetchChart(symbol, timeframe, false)} 
+                                    disabled={chartLoading}
+                                    color="#00eeff"
+                                    title="Refresh Chart"
+                                >
+                                    {chartLoading ? '🔄...' : '🔄'}
+                                </PillBtn>
                             </div>
                         </div>
                     </div>
@@ -738,7 +770,7 @@ export default function PaperTradingPanel() {
                     {/* Charts */}
                     {displayData.length > 0 && (
                         <div style={{ padding: '8px 4px 12px 0' }}>
-                            <LightweightChart data={displayData} type={chartType} height={450} />
+                            <LightweightChart data={displayData} type={chartType} height={450} timeframe={timeframe} />
                         </div>
                     )}
                 </div>

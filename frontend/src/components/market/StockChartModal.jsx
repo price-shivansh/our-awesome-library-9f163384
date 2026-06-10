@@ -12,8 +12,7 @@ import QuantDashboard from '../quant/QuantDashboard';
 const getApiBase = () => {
   const url = import.meta.env.VITE_API_URL;
   if (!url) return '/api';
-  const clean = url.endsWith('/') ? url.slice(0, -1) : url;
-  return `${clean.startsWith('http') ? '' : 'https://'}${clean}/api`;
+  return url.replace(/\/$/, '') + '/api';
 };
 const API_BASE = getApiBase();
 

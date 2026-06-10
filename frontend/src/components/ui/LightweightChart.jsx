@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createChart, CrosshairMode, CandlestickSeries, AreaSeries } from 'lightweight-charts';
 
-const LightweightChart = ({ data, type = 'candle', width = 0, height = 400 }) => {
+const LightweightChart = ({ data, type = 'candle', width = 0, height = 400, timeframe }) => {
     const chartContainerRef = useRef();
     const chartRef = useRef(null);
     const seriesRef = useRef(null);
@@ -22,42 +22,60 @@ const LightweightChart = ({ data, type = 'candle', width = 0, height = 400 }) =>
                 height: height,
                 layout: {
                     background: { type: 'solid', color: 'transparent' },
-                    textColor: 'rgba(0, 255, 136, 0.5)',
-                    fontFamily: 'Share Tech Mono',
+                    textColor: '#9CA3AF', // slate-400
+                    fontFamily: 'Share Tech Mono, sans-serif',
                 },
                 grid: {
-                    vertLines: { color: 'rgba(0, 255, 136, 0.06)', style: 1 },
-                    horzLines: { color: 'rgba(0, 255, 136, 0.06)', style: 1 },
+                    vertLines: { color: 'rgba(75, 85, 99, 0.08)', style: 1 }, // slate-600 with low opacity
+                    horzLines: { color: 'rgba(75, 85, 99, 0.08)', style: 1 },
                 },
                 crosshair: {
                     mode: CrosshairMode.Normal,
                     vertLine: {
-                        color: 'rgba(0, 255, 136, 0.4)',
+                        color: 'rgba(156, 163, 175, 0.4)',
                         width: 1,
                         style: 1,
-                        labelBackgroundColor: '#030f1e',
+                        labelBackgroundColor: '#1F2937', // gray-800
                     },
                     horzLine: {
-                        color: 'rgba(0, 255, 136, 0.4)',
+                        color: 'rgba(156, 163, 175, 0.4)',
                         width: 1,
                         style: 1,
-                        labelBackgroundColor: '#030f1e',
+                        labelBackgroundColor: '#1F2937',
                     },
                 },
                 rightPriceScale: {
-                    borderColor: 'rgba(0, 255, 136, 0.2)',
+                    borderColor: 'rgba(75, 85, 99, 0.2)',
+                    visible: true,
                 },
                 timeScale: {
-                    borderColor: 'rgba(0, 255, 136, 0.2)',
+                    borderColor: 'rgba(75, 85, 99, 0.2)',
                     timeVisible: true,
                     secondsVisible: false,
+                    visible: true,
+                    rightOffset: 2, // Minimal right offset to reduce empty right-side spacing
+                    fixLeftEdge: true,
+                    fixRightEdge: true, // Fix edge to prevent infinite scroll on the right
                 },
+                handleScroll: {
+                    mouseWheel: true,
+                    pressedMouseMove: true,
+                    horzTouchDrag: true,
+                    vertTouchDrag: true
+                },
+                handleScale: {
+                    mouseWheel: true,
+                    pinch: true,
+                    axisPressedMouseMove: {
+                        time: true,
+                        price: true
+                    }
+                }
             });
             chartRef.current = chart;
 
             // Add series based on type (v5 API)
             if (type === 'candle') {
-                // Check if addCandlestickSeries exists (backwards compatibility), else use addSeries
                 if (typeof chart.addCandlestickSeries === 'function') {
                     seriesRef.current = chart.addCandlestickSeries({
                         upColor: 'rgba(0, 255, 136, 0.8)',
@@ -110,15 +128,33 @@ const LightweightChart = ({ data, type = 'candle', width = 0, height = 400 }) =>
     useEffect(() => {
         if (!seriesRef.current || !data || data.length === 0) return;
 
+        const selectedTimeframe = timeframe || 'Unknown';
+        const candles = data;
+
+        // Diagnostic log: output timeframe and loaded candles count
+        console.log(
+            'Timeframe:',
+            selectedTimeframe,
+            'Candles Loaded:',
+            candles.length
+        );
+
         // Transform data
         const formattedData = data.map(item => {
             // lightweight-charts needs time in UNIX timestamp format (seconds) or string 'YYYY-MM-DD'
-            // Assuming item.date is an ISO string or 'YYYY-MM-DD HH:mm:ss'
-            let timeValue;
-            try {
-                timeValue = new Date(item.date).getTime() / 1000;
-            } catch (e) {
-                timeValue = item.date;
+            // If item has a 'time' property, use that directly. Otherwise, fall back to parsing item.date.
+            let timeValue = item.time;
+            if (timeValue === undefined || timeValue === null) {
+                try {
+                    const parsedTime = new Date(item.date).getTime() / 1000;
+                    if (!isNaN(parsedTime)) {
+                        timeValue = parsedTime;
+                    } else {
+                        timeValue = item.date;
+                    }
+                } catch (e) {
+                    timeValue = item.date;
+                }
             }
 
             if (type === 'candle') {
@@ -143,12 +179,12 @@ const LightweightChart = ({ data, type = 'candle', width = 0, height = 400 }) =>
 
         try {
             seriesRef.current.setData(uniqueData);
-            chartRef.current.timeScale().fitContent();
+            chartRef.current.timeScale().fitContent(); // Automatically fit content on load
         } catch(e) {
             console.error("Lightweight charts data error:", e);
         }
 
-    }, [data, type]);
+    }, [data, type, timeframe]);
 
     if (chartError) {
         return (

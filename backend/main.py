@@ -8,8 +8,15 @@ Entry point (unchanged for Render / local dev):
     uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 """
 import asyncio
+import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# Ensure stdout uses UTF-8 on Windows (avoids UnicodeEncodeError with box chars)
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except AttributeError:
+    pass  # Python < 3.7
 
 from config import settings
 
@@ -75,6 +82,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Request logging middleware ────────────────────────────────────────────────
+import time
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class RequestLogMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        t0 = time.monotonic()
+        response = await call_next(request)
+        ms = (time.monotonic() - t0) * 1000
+        # Only log /api/* and /health — ignore websockets noise
+        path = request.url.path
+        if path.startswith("/api") or path == "/health":
+            print(f"[REQ] {request.method} {path} -> {response.status_code}  ({ms:.0f}ms)")
+        return response
+
+app.add_middleware(RequestLogMiddleware)
+
 # ── Register routers ───────────────────────────────────────────────────────────
 app.include_router(market_router)
 app.include_router(signals_router)
@@ -99,6 +123,24 @@ async def health_check():
 # ── Startup background tasks ───────────────────────────────────────────────────
 @app.on_event("startup")
 async def _startup():
+    # ── Database Initialization & Startup Checks ──────────────────────────────
+    from database.db import Base, engine, SessionLocal
+    from database.models import NewsArticle, PredictionMemory, PredictionOutcome, MarketSnapshot, TelegramSubscriber, SentNews
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("[Database] Schema check: SQLite tables verified/created.")
+        with SessionLocal() as db:
+            news_count = db.query(NewsArticle).count()
+            preds_count = db.query(PredictionMemory).count()
+            outcomes_count = db.query(PredictionOutcome).count()
+            snaps_count = db.query(MarketSnapshot).count()
+            subs_count = db.query(TelegramSubscriber).count()
+            sent_count = db.query(SentNews).count()
+        print(f"[Database] Status - News: {news_count}, Predictions: {preds_count}, Outcomes: {outcomes_count}, Snapshots: {snaps_count}, Subscribers: {subs_count}, SentNews: {sent_count}")
+        print("[Database] Health check passed. SQLite single source of truth is active.")
+    except Exception as e:
+        print(f"[Database] ERROR: Startup database checks failed: {e}")
+
     from market_stream import stream_manager
     asyncio.create_task(stream_manager.run_stream())
     asyncio.create_task(_paper_trade_auto_close_loop())
@@ -118,6 +160,16 @@ async def _startup():
     else:
         print("[Telegram] Notifications disabled (TELEGRAM_ENABLED=false).")
 
+    # ── Print all registered routes (useful for debugging 404s on Render) ──────
+    from fastapi.routing import APIRoute
+    print("\n[Routes] --- Registered API routes ---")
+    for route in app.routes:
+        if isinstance(route, APIRoute):
+            methods = ",".join(sorted(route.methods or []))
+            print(f"  [{methods}] {route.path}")
+    print("[Routes] --- End of route list ---\n")
+
+
 
 async def _paper_trade_auto_close_loop():
     """Background loop: auto-close paper trades when SL / Target is hit."""
@@ -133,4 +185,4 @@ async def _paper_trade_auto_close_loop():
 # ── Local development entry point ──────────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

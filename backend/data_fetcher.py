@@ -7,6 +7,30 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+import math
+
+def safe_float(val, default: float = 0.0) -> float:
+    try:
+        if val is None or pd.isna(val):
+            return default
+        fval = float(val)
+        if math.isnan(fval) or math.isinf(fval):
+            return default
+        return fval
+    except Exception:
+        return default
+
+def safe_int(val, default: int = 0) -> int:
+    try:
+        if val is None or pd.isna(val):
+            return default
+        fval = float(val)
+        if math.isnan(fval) or math.isinf(fval):
+            return default
+        return int(fval)
+    except Exception:
+        return default
+
 
 from models import StockData, Signal, SignalType, TechnicalIndicators
 from technical_analysis import technical_analyzer
@@ -110,6 +134,12 @@ class DataFetcher:
         df = await loop.run_in_executor(self.executor, self._fetch_stock_data_sync, symbol, period, interval)
         
         if df is not None:
+            # Drop any completely empty or NaN rows from price fields to avoid JSON compliance issues
+            cols_to_check = [col for col in ['Open', 'High', 'Low', 'Close'] if col in df.columns]
+            if cols_to_check:
+                df = df.dropna(subset=cols_to_check)
+            if df.empty:
+                return None
             self.data_cache[cache_key] = (df, datetime.now())
         
         return df
@@ -125,10 +155,11 @@ class DataFetcher:
             latest = df.iloc[-1]
             prev = df.iloc[-2] if len(df) > 1 else df.iloc[-1]
             
-            price = float(latest['Close'])
-            prev_close = float(prev['Close'])
+            price = safe_float(latest['Close'])
+            prev_close = safe_float(prev['Close'])
             change = price - prev_close
-            change_percent = (change / prev_close) * 100 if prev_close else 0
+            change_percent = (change / prev_close) * 100.0 if prev_close else 0.0
+            change_percent = safe_float(change_percent)
             
             indicators = technical_analyzer.calculate_all_indicators(df)
             
@@ -138,10 +169,10 @@ class DataFetcher:
                 price=round(price, 2),
                 change=round(change, 2),
                 change_percent=round(change_percent, 2),
-                volume=int(latest['Volume']),
-                high=round(float(latest['High']), 2),
-                low=round(float(latest['Low']), 2),
-                open=round(float(latest['Open']), 2),
+                volume=safe_int(latest['Volume']),
+                high=round(safe_float(latest['High']), 2),
+                low=round(safe_float(latest['Low']), 2),
+                open=round(safe_float(latest['Open']), 2),
                 prev_close=round(prev_close, 2),
                 timestamp=datetime.now(),
                 indicators=indicators
@@ -199,8 +230,9 @@ class DataFetcher:
                 stock.indicators, stock.price
             )
         
-        sentiment_normalized = sentiment_score * 100
+        sentiment_normalized = safe_float(sentiment_score * 100.0)
         combined_score = (technical_score * 0.6) + (sentiment_normalized * 0.4)
+        combined_score = safe_float(combined_score)
         
         if sentiment_score > 0.2:
             reasons.append(f"Bullish news sentiment ({sentiment_score:.2f})")
@@ -223,20 +255,53 @@ class DataFetcher:
     
     async def get_historical_data(self, symbol: str, period: str = "1y", interval: str = "1d") -> Optional[List[Dict]]:
         """Get historical price data for charting"""
-        df = await self.fetch_stock_data(symbol, period, interval)
+        is_4h = interval.lower() in ["4h"]
+        fetch_interval = "1h" if is_4h else interval
+        
+        df = await self.fetch_stock_data(symbol, period, fetch_interval)
         
         if df is None or df.empty:
             return None
+            
+        if is_4h:
+            # Resample hourly data to 4-hour candles
+            # Sorting index to ensure chronological order before resampling
+            df = df.sort_index()
+            df = df.resample('4h').agg({
+                'Open': 'first',
+                'High': 'max',
+                'Low': 'min',
+                'Close': 'last',
+                'Volume': 'sum'
+            }).dropna(subset=['Open', 'High', 'Low', 'Close'])
+            
+        if df.empty:
+            return None
         
         data = []
+        is_intraday = interval.lower() in ["1m", "2m", "3m", "5m", "15m", "30m", "60m", "90m", "1h", "4h"]
         for index, row in df.iterrows():
+            if is_intraday:
+                date_str = index.strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                date_str = index.strftime("%Y-%m-%d")
+                
+            try:
+                ts = int(index.timestamp())
+            except Exception:
+                try:
+                    ts = int(datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S" if is_intraday else "%Y-%m-%d").timestamp())
+                except Exception:
+                    ts = 0
+            
             data.append({
-                "date": index.strftime("%Y-%m-%d"),
-                "open": round(float(row['Open']), 2),
-                "high": round(float(row['High']), 2),
-                "low": round(float(row['Low']), 2),
-                "close": round(float(row['Close']), 2),
-                "volume": int(row['Volume'])
+                "date": date_str,
+                "time": ts,
+                "open": round(safe_float(row['Open']), 2),
+                "high": round(safe_float(row['High']), 2),
+                "low": round(safe_float(row['Low']), 2),
+                "close": round(safe_float(row['Close']), 2),
+                "volume": safe_int(row['Volume'])
             })
         
         return data
