@@ -23,7 +23,13 @@ import {
 import LightweightChart from './ui/LightweightChart';
 import QuantPanelMock from './quant/QuantPanelMock';
 
-const API = '/api';
+const getApiBase = () => {
+    const url = import.meta.env.VITE_API_URL;
+    if (!url) return '/api';
+    return url.replace(/\/$/, '') + '/api';
+};
+const API = getApiBase();
+
 
 // ── Asset type detection ──────────────────────────────────────────────────────
 const getAssetType = (sym) => {
@@ -273,7 +279,7 @@ const SimulatedOrderBook = ({ symbol }) => {
 
         const fetchBook = async () => {
             try {
-                const res = await axios.get(`/api/paper-trading/order-book/${encodeURIComponent(symbol)}`);
+                const res = await axios.get(`${API}/paper-trading/order-book/${encodeURIComponent(symbol)}`);
                 if (!mounted) return;
                 
                 const data = res.data;

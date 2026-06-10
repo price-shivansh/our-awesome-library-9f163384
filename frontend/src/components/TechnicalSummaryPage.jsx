@@ -3,7 +3,13 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { Activity, ArrowLeft } from 'lucide-react';
 
-const API_BASE = '/api';
+const getApiBase = () => {
+    const url = import.meta.env.VITE_API_URL;
+    if (!url) return '/api';
+    return url.replace(/\/$/, '') + '/api';
+};
+const API_BASE = getApiBase();
+
 
 const HoloCorners = () => (
     <>

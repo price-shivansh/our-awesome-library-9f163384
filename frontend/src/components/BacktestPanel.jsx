@@ -9,7 +9,13 @@ import {
     ResponsiveContainer,
 } from 'recharts';
 
-const API = '/api';
+const getApiBase = () => {
+    const url = import.meta.env.VITE_API_URL;
+    if (!url) return '/api';
+    return url.replace(/\/$/, '') + '/api';
+};
+const API = getApiBase();
+
 
 const HoloCorners = () => (
     <>
