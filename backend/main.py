@@ -20,6 +20,17 @@ except AttributeError:
 
 from config import settings
 
+# ── Database Initialization & Table Creation ──────────────────────────────────
+# This must run before importing any routers to ensure database tables exist
+# prior to module-level instantiations in router imports.
+from database.db import Base, engine
+import database.models  # Ensure models are registered to Base.metadata
+try:
+    Base.metadata.create_all(bind=engine)
+    print("[Database] Schema check: SQLite tables verified/created at startup.")
+except Exception as e:
+    print(f"[Database] ERROR: Failed to create SQLite tables at startup: {e}")
+
 # ── Router imports ─────────────────────────────────────────────────────────────
 from routers.market        import router as market_router
 from routers.signals       import router as signals_router

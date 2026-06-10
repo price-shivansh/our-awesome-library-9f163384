@@ -5,6 +5,8 @@ import aiohttp
 import asyncio
 import logging
 import json
+import sqlite3
+import sqlalchemy.exc
 from pathlib import Path
 from config import settings
 from database.db import SessionLocal
@@ -34,8 +36,11 @@ class TelegramSubscriberManager:
     """Manages persistent storage of Telegram chat IDs and their filter preferences in the database."""
     def __init__(self):
         self.subscribers = {}
-        self.load_subscribers()
-        self._migrate_legacy_id()
+        if getattr(settings, 'TELEGRAM_ENABLED', False):
+            self.load_subscribers()
+            self._migrate_legacy_id()
+        else:
+            logger.info("[Telegram] Notifications disabled (TELEGRAM_ENABLED=false). Skipping subscriber database initialization.")
 
     def load_subscribers(self) -> None:
         try:
@@ -51,6 +56,9 @@ class TelegramSubscriberManager:
                         "is_active": r.is_active,
                         "filters": filters
                     }
+        except (sqlalchemy.exc.OperationalError, sqlite3.OperationalError) as e:
+            logger.error(f"[Telegram] Missing telegram_subscribers table during load: {e}")
+            self.subscribers = {}
         except Exception as e:
             logger.warning(f"[Telegram] Failed to load subscribers from DB: {e}. Starting fresh.")
             self.subscribers = {}
@@ -61,20 +69,25 @@ class TelegramSubscriberManager:
 
     def _migrate_legacy_id(self) -> None:
         """Add legacy .env CHAT_ID with default filters if DB is empty."""
-        with SessionLocal() as db:
-            total = db.query(TelegramSubscriber).count()
-            if total == 0:
-                legacy_id = getattr(settings, 'TELEGRAM_CHAT_ID', '').strip()
-                if legacy_id and legacy_id.lstrip('-').isdigit():
-                    db_sub = TelegramSubscriber(
-                        chat_id=legacy_id,
-                        is_active=True,
-                        filters=json.dumps(DEFAULT_FILTERS)
-                    )
-                    db.add(db_sub)
-                    db.commit()
-                    self.subscribers[str(legacy_id)] = {"is_active": True, "filters": dict(DEFAULT_FILTERS)}
-                    logger.info(f"[Telegram] Added legacy TELEGRAM_CHAT_ID ({legacy_id}) as initial subscriber in DB.")
+        try:
+            with SessionLocal() as db:
+                total = db.query(TelegramSubscriber).count()
+                if total == 0:
+                    legacy_id = getattr(settings, 'TELEGRAM_CHAT_ID', '').strip()
+                    if legacy_id and legacy_id.lstrip('-').isdigit():
+                        db_sub = TelegramSubscriber(
+                            chat_id=legacy_id,
+                            is_active=True,
+                            filters=json.dumps(DEFAULT_FILTERS)
+                        )
+                        db.add(db_sub)
+                        db.commit()
+                        self.subscribers[str(legacy_id)] = {"is_active": True, "filters": dict(DEFAULT_FILTERS)}
+                        logger.info(f"[Telegram] Added legacy TELEGRAM_CHAT_ID ({legacy_id}) as initial subscriber in DB.")
+        except (sqlalchemy.exc.OperationalError, sqlite3.OperationalError) as e:
+            logger.error(f"[Telegram] Missing telegram_subscribers table during legacy migration check: {e}")
+        except Exception as e:
+            logger.warning(f"[Telegram] Failed during legacy CHAT_ID migration: {e}")
 
     def update_user_status(self, chat_id: int, is_active: bool) -> bool:
         """Return True if status was changed, False if already in desired state."""
