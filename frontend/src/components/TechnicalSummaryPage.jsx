@@ -92,7 +92,7 @@ const TechnicalSummaryPage = () => {
             <header style={{ background: 'linear-gradient(180deg, rgba(0,8,20,0.98) 0%, rgba(2,12,27,0.95) 100%)', borderBottom: '1px solid rgba(0,255,136,0.15)', position: 'sticky', top: 0, zIndex: 100, backdropFilter: 'blur(20px)' }}>
                 <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '16px' }}>
                     <button
-                        onClick={() => navigate('/')}
+                        onClick={() => navigate('/dashboard')}
                         style={{ fontFamily: 'Orbitron', fontSize: '0.65rem', padding: '8px 16px', cursor: 'pointer', border: '1px solid rgba(0,255,136,0.3)', background: 'transparent', color: '#00ff88', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s', letterSpacing: '0.15em' }}
                         onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,255,136,0.1)'; e.currentTarget.style.boxShadow = '0 0 10px rgba(0,255,136,0.2)' }}
                         onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.boxShadow = 'none' }}

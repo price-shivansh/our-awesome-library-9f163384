@@ -21,7 +21,7 @@ import {
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import LightweightChart from './ui/LightweightChart';
-import QuantPanelMock from './quant/QuantPanelMock';
+import QuantPanel from './quant/QuantPanel';
 
 const getApiBase = () => {
     const url = import.meta.env.VITE_API_URL;
@@ -403,20 +403,28 @@ export default function PaperTradingPanel() {
     // ── chart ─────────────────────────────────────────────────────────────────
     const [chartData, setChartData] = useState([]);
     const [chartLoading, setChartLoading] = useState(false);
+    const latestRequestRef = useRef(0);
+    const [chartRefreshTrigger, setChartRefreshTrigger] = useState(0);
+    const [chartInteractiveLoading, setChartInteractiveLoading] = useState(false);
     const [chartSymbol, setChartSymbol] = useState('RELIANCE.NS');
     const [timeframe, setTimeframe] = useState('15m');
     const [chartType, setChartType] = useState('line');
 
     // ── Fetch chart ───────────────────────────────────────────────────────────
     const fetchChart = useCallback(async (sym, interval, isSilent = true) => {
-        if (chartLoading) return;
+        const requestId = ++latestRequestRef.current;
         if (!isSilent) {
             toast("Loading chart data...", "INFO");
+            setChartInteractiveLoading(true);
         }
         setChartLoading(true);
         try {
-            console.log("Reloading chart", sym, interval);
+            console.log("Reloading chart", sym, interval, "Request ID:", requestId);
             const res = await axios.get(`${API}/paper-trading/chart/${encodeURIComponent(sym)}/${interval}`);
+            if (requestId !== latestRequestRef.current) {
+                console.log("Discarding outdated chart response for", sym, interval);
+                return;
+            }
             const raw = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
             setChartData(raw);
             setChartSymbol(sym);
@@ -425,18 +433,23 @@ export default function PaperTradingPanel() {
                 toast("Chart updated successfully", "SUCCESS");
             }
         } catch (e) {
-            console.error(e);
-            setChartData([]);
-            if (!isSilent) {
-                toast("Failed to refresh chart", "ERROR");
+            if (requestId === latestRequestRef.current) {
+                console.error(e);
+                setChartData([]);
+                if (!isSilent) {
+                    toast("Failed to refresh chart", "ERROR");
+                }
             }
         } finally {
-            setChartLoading(false);
+            if (requestId === latestRequestRef.current) {
+                setChartLoading(false);
+                setChartInteractiveLoading(false);
+            }
         }
-    }, [chartLoading]);
+    }, []);
 
     // Initial load + update LTP from chart data
-    useEffect(() => { fetchChart('RELIANCE.NS', '15m'); }, []); // eslint-disable-line
+    useEffect(() => { fetchChart('RELIANCE.NS', '15m', false); }, []); // eslint-disable-line
 
     // Keep LTP in sync with latest chart close price
     useEffect(() => {
@@ -471,24 +484,24 @@ export default function PaperTradingPanel() {
     // Timeframe change
     const handleTimeframeChange = (tf) => {
         setTimeframe(tf);
-        fetchChart(symbol, tf);
+        fetchChart(symbol, tf, false);
     };
 
-    const handleSymbolSelect = (sym) => { setSymbol(sym); fetchChart(sym, timeframe); };
+    const handleSymbolSelect = (sym) => { setSymbol(sym); fetchChart(sym, timeframe, false); };
 
     // ── Crude Oil Mode ────────────────────────────────────────────────────────
     const handleCrudeOilMode = () => {
         setSymbol('CL=F');
         setQuantity(10);
         setTimeframe('5m');
-        fetchChart('CL=F', '5m');
+        fetchChart('CL=F', '5m', false);
         toast('🔥 Crude Oil Mode activated — CL=F, 5m', 'WARN');
     };
 
     // ── Preset quick-select ───────────────────────────────────────────────────
     const handlePreset = (sym) => {
         setSymbol(sym);
-        fetchChart(sym, timeframe);
+        fetchChart(sym, timeframe, false);
     };
 
     // ── PnL polling (Phase 1) ──────────────────────────────────────────────────
@@ -755,7 +768,10 @@ export default function PaperTradingPanel() {
                                 <PillBtn active={chartType === 'candle'} onClick={() => setChartType('candle')} color="#00eeff">CANDLES</PillBtn>
                                 <PillBtn 
                                     active={false} 
-                                    onClick={() => fetchChart(symbol, timeframe, false)} 
+                                    onClick={() => {
+                                        fetchChart(symbol, timeframe, false);
+                                        setChartRefreshTrigger(prev => prev + 1);
+                                    }} 
                                     disabled={chartLoading}
                                     color="#00eeff"
                                     title="Refresh Chart"
@@ -776,13 +792,13 @@ export default function PaperTradingPanel() {
                     {/* Charts */}
                     {displayData.length > 0 && (
                         <div style={{ padding: '8px 4px 12px 0' }}>
-                            <LightweightChart data={displayData} type={chartType} height={450} timeframe={timeframe} />
+                            <LightweightChart data={displayData} type={chartType} height={450} timeframe={timeframe} symbol={symbol} refreshTrigger={chartRefreshTrigger} isLoading={chartInteractiveLoading} />
                         </div>
                     )}
                 </div>
 
                 {/* Quant Decision Engine Panel */}
-                <QuantPanelMock 
+                <QuantPanel 
                     symbol={chartSymbol} 
                     onApplyPlan={(plan) => {
                         setDirection(plan.direction);

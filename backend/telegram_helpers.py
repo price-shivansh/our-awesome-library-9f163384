@@ -1,7 +1,7 @@
 import pytz
 from datetime import datetime, timezone
 from typing import List, Dict, Tuple, Any
-from models import NewsItem, MarketSentiment
+from schemas.market_schemas import NewsItem, MarketSentiment, SentimentType
 from sentiment_analysis import sentiment_analyzer
 
 # ── 1. State Retrieval Helper ────────────────────────────────────────────────
@@ -27,7 +27,7 @@ async def get_current_market_state() -> Tuple[MarketSentiment, List[NewsItem]]:
         asset_sentiments = {sym: sentiment_analyzer.get_asset_sentiment(sym, news_items)
                             for sym in TRACKED_ASSETS}
                             
-        from models import SentimentType, MarketSentiment
+        from schemas.market_schemas import MarketSentiment
         ms = MarketSentiment(
             overall_sentiment=sentiment_analyzer.get_sentiment_type(avg_score),
             sentiment_score=round(avg_score, 3),
@@ -48,7 +48,6 @@ async def get_current_market_state() -> Tuple[MarketSentiment, List[NewsItem]]:
 # ── 2. Formatting Helpers ────────────────────────────────────────────────────
 
 def format_sentiment_label(sentiment_score: float) -> str:
-    from models import SentimentType
     if sentiment_score >= 0.15:
         return f"🟢 <b>BULLISH</b> (+{abs(sentiment_score):.2f})"
     elif sentiment_score <= -0.15:

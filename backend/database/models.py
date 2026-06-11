@@ -181,3 +181,24 @@ class SentNews(Base):
 
     headline = Column(String, primary_key=True)
     sent_at = Column(DateTime, nullable=False)
+
+
+class User(Base):
+    """
+    Table: users
+    Stores registered platform users for JWT authentication.
+    """
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    email = Column(String, nullable=False, unique=True, index=True)
+    password_hash = Column(String, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    last_login = Column(DateTime, nullable=True)
+
+    # Subscription & Telegram Fields
+    subscription_plan = Column(String, default="free", nullable=False)
+    subscription_status = Column(String, default="inactive", nullable=False)
+    telegram_access = Column(Boolean, default=False, nullable=False)
+    telegram_chat_id = Column(String, nullable=True)

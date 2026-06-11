@@ -109,6 +109,11 @@ class Settings(BaseSettings):
     TELEGRAM_ENABLED: bool = False
     TELEGRAM_NEWS_INTERVAL: int = 180   # seconds between news checks (default 3 min)
 
+    # ── Authentication / JWT ─────────────────────────────────────────────────
+    JWT_SECRET_KEY: str = "change-me-in-production-use-a-long-random-string"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_DAYS: int = 7
+
     # ── Mobile App Settings ─────────────────────────────────────────────────
     MOBILE_APP_API_ENABLED: bool = True
     ALLOW_MOBILE_CORS: bool = True

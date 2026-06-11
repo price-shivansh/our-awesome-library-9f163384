@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 import asyncio
-from models import (
+from schemas.paper_trading_schemas import (
     AssetType, OrderSide, PositionStatus, OrderStatus, 
     PaperOrderRequest, PaperPosition, PaperAccount, TradeHistoryItem,
     OrderLogItem

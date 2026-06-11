@@ -5,7 +5,10 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from sentiment_analysis import sentiment_analyzer
-from news_history import get_history_path, get_history_stats, save_news_to_excel
+from services.news_archive import (
+    news_archive_service, get_history_path, get_history_stats,
+    get_all_history_stats, save_news_to_excel, reset_history,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["sentiment"])
@@ -89,12 +92,10 @@ async def get_news_history_stats(category: Optional[str] = None, date: Optional[
     """Get stats about the stored news history Excel file or retrieved archived daily news."""
     logger.info(f"Request started: /api/news/history with category={category}, date={date}")
     try:
-        from services.news_archive import news_archive_service
         if date:
             items = news_archive_service.get_by_date(date)
             return {"news": items}
             
-        from news_history import get_all_history_stats, get_history_stats
         if category:
             stats = get_history_stats(category)
             return {
@@ -118,7 +119,6 @@ async def get_news_history_dates():
     """Returns a list of all available archive dates (YYYY-MM-DD)."""
     logger.info("Request started: /api/news/history/dates")
     try:
-        from services.news_archive import news_archive_service
         dates = news_archive_service.get_available_dates()
         return {"dates": dates}
     except Exception as e:
@@ -131,7 +131,6 @@ async def get_news_history_range(start: str, end: str):
     """Returns combined archived news from all files in the given date range."""
     logger.info(f"Request started: /api/news/history/range from {start} to {end}")
     try:
-        from services.news_archive import news_archive_service
         items = news_archive_service.get_by_date_range(start, end)
         return {"news": items}
     except Exception as e:
@@ -143,7 +142,6 @@ async def get_news_history_range(start: str, end: str):
 @router.delete("/api/news/history")
 async def reset_news_history(category: str):
     """Reset (delete) the news history for a given category."""
-    from news_history import reset_history
     try:
         success = reset_history(category)
         if success:

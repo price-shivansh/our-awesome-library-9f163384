@@ -32,7 +32,7 @@ def safe_int(val, default: int = 0) -> int:
         return default
 
 
-from models import StockData, Signal, SignalType, TechnicalIndicators
+from schemas.market_schemas import StockData, Signal, SignalType, TechnicalIndicators
 from technical_analysis import technical_analyzer
 from sentiment_analysis import sentiment_analyzer
 from config import settings

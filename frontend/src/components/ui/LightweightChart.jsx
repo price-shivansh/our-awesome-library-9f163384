@@ -1,14 +1,65 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createChart, CrosshairMode, CandlestickSeries, AreaSeries } from 'lightweight-charts';
 
-const LightweightChart = ({ data, type = 'candle', width = 0, height = 400, timeframe }) => {
+const LightweightChart = ({ data, type = 'candle', width = 0, height = 400, timeframe, symbol, refreshTrigger, isLoading }) => {
     const chartContainerRef = useRef();
+    const chartRefDiv = useRef(null);
     const chartRef = useRef(null);
     const seriesRef = useRef(null);
     const [chartError, setChartError] = useState(null);
 
+    // Refs for zoom reset logic
+    const prevSymbol = useRef(null);
+    const prevTimeframe = useRef(null);
+    const prevRefreshTrigger = useRef(null);
+    const [lastUpdatedTime, setLastUpdatedTime] = useState('');
+
+    // Loading Stages list and state
+    const STAGES = [
+        "Fetching Market Data...",
+        "Processing Candles...",
+        "Running Technical Analysis...",
+        "Updating Quant Engine...",
+        "Rendering Chart..."
+    ];
+    const [loadingStage, setLoadingStage] = useState(STAGES[0]);
+    const [renderOverlay, setRenderOverlay] = useState(isLoading);
+    const [isFadingOut, setIsFadingOut] = useState(false);
+
     useEffect(() => {
-        if (!chartContainerRef.current) return;
+        if (isLoading) {
+            setRenderOverlay(true);
+            setIsFadingOut(false);
+        } else {
+            setIsFadingOut(true);
+            const timer = setTimeout(() => {
+                setRenderOverlay(false);
+                setIsFadingOut(false);
+            }, 220); // match fade out duration (220ms)
+            return () => clearTimeout(timer);
+        }
+    }, [isLoading]);
+
+    // Cycling loading stages logic
+    useEffect(() => {
+        if (!isLoading) {
+            setLoadingStage(STAGES[0]);
+            return;
+        }
+
+        let stageIndex = 0;
+        const interval = setInterval(() => {
+            if (stageIndex < STAGES.length - 1) {
+                stageIndex++;
+                setLoadingStage(STAGES[stageIndex]);
+            }
+        }, 150);
+
+        return () => clearInterval(interval);
+    }, [isLoading]);
+
+    useEffect(() => {
+        if (!chartRefDiv.current) return;
 
         const handleResize = () => {
             if (chartRef.current && chartContainerRef.current) {
@@ -17,8 +68,8 @@ const LightweightChart = ({ data, type = 'candle', width = 0, height = 400, time
         };
 
         try {
-            const chart = createChart(chartContainerRef.current, {
-                width: chartContainerRef.current.clientWidth,
+            const chart = createChart(chartRefDiv.current, {
+                width: chartContainerRef.current ? chartContainerRef.current.clientWidth : 600,
                 height: height,
                 layout: {
                     background: { type: 'solid', color: 'transparent' },
@@ -26,8 +77,8 @@ const LightweightChart = ({ data, type = 'candle', width = 0, height = 400, time
                     fontFamily: 'Share Tech Mono, sans-serif',
                 },
                 grid: {
-                    vertLines: { color: 'rgba(75, 85, 99, 0.08)', style: 1 }, // slate-600 with low opacity
-                    horzLines: { color: 'rgba(75, 85, 99, 0.08)', style: 1 },
+                    vertLines: { color: 'rgba(120, 120, 120, 0.12)', style: 1, visible: true },
+                    horzLines: { color: 'rgba(120, 120, 120, 0.12)', style: 1, visible: true },
                 },
                 crosshair: {
                     mode: CrosshairMode.Normal,
@@ -45,21 +96,21 @@ const LightweightChart = ({ data, type = 'candle', width = 0, height = 400, time
                     },
                 },
                 rightPriceScale: {
-                    borderColor: 'rgba(75, 85, 99, 0.2)',
+                    borderVisible: false,
                     visible: true,
                 },
                 timeScale: {
-                    borderColor: 'rgba(75, 85, 99, 0.2)',
+                    borderVisible: false,
                     timeVisible: true,
                     secondsVisible: false,
                     visible: true,
-                    rightOffset: 2, // Minimal right offset to reduce empty right-side spacing
+                    rightOffset: 18, // Visible breathing room before the price axis
                     fixLeftEdge: true,
-                    fixRightEdge: true, // Fix edge to prevent infinite scroll on the right
+                    fixRightEdge: false, // Set to false so rightOffset is respected
                 },
                 handleScroll: {
                     mouseWheel: true,
-                    pressedMouseMove: true,
+                    pressedMouseMove: true, // drag pan
                     horzTouchDrag: true,
                     vertTouchDrag: true
                 },
@@ -74,7 +125,7 @@ const LightweightChart = ({ data, type = 'candle', width = 0, height = 400, time
             });
             chartRef.current = chart;
 
-            // Add series based on type (v5 API)
+            // Add series based on type (v5 API compatibility)
             if (type === 'candle') {
                 if (typeof chart.addCandlestickSeries === 'function') {
                     seriesRef.current = chart.addCandlestickSeries({
@@ -141,8 +192,6 @@ const LightweightChart = ({ data, type = 'candle', width = 0, height = 400, time
 
         // Transform data
         const formattedData = data.map(item => {
-            // lightweight-charts needs time in UNIX timestamp format (seconds) or string 'YYYY-MM-DD'
-            // If item has a 'time' property, use that directly. Otherwise, fall back to parsing item.date.
             let timeValue = item.time;
             if (timeValue === undefined || timeValue === null) {
                 try {
@@ -179,12 +228,38 @@ const LightweightChart = ({ data, type = 'candle', width = 0, height = 400, time
 
         try {
             seriesRef.current.setData(uniqueData);
-            chartRef.current.timeScale().fitContent(); // Automatically fit content on load
+
+            // Determine zoom reset conditions
+            const hasSymbolChanged = prevSymbol.current !== symbol;
+            const hasTimeframeChanged = prevTimeframe.current !== timeframe;
+            const hasRefreshTriggered = refreshTrigger !== undefined && prevRefreshTrigger.current !== refreshTrigger;
+            const isFirstLoad = prevSymbol.current === null && prevTimeframe.current === null;
+
+            if (isFirstLoad || hasSymbolChanged || hasTimeframeChanged || hasRefreshTriggered) {
+                console.log("[LightweightChart] Fitting content due to:", {
+                    isFirstLoad,
+                    hasSymbolChanged,
+                    hasTimeframeChanged,
+                    hasRefreshTriggered
+                });
+                chartRef.current.timeScale().fitContent();
+            } else {
+                console.log("[LightweightChart] Skipping fitContent to preserve user zoom.");
+            }
+
+            // Sync prev refs
+            prevSymbol.current = symbol;
+            prevTimeframe.current = timeframe;
+            prevRefreshTrigger.current = refreshTrigger;
+
+            // Sync last updated timestamp
+            const now = new Date();
+            setLastUpdatedTime(now.toLocaleTimeString());
         } catch(e) {
             console.error("Lightweight charts data error:", e);
         }
 
-    }, [data, type, timeframe]);
+    }, [data, type, timeframe, symbol, refreshTrigger]);
 
     if (chartError) {
         return (
@@ -195,7 +270,67 @@ const LightweightChart = ({ data, type = 'candle', width = 0, height = 400, time
     }
 
     return (
-        <div ref={chartContainerRef} style={{ width: '100%', height: `${height}px`, position: 'relative' }} />
+        <div ref={chartContainerRef} style={{ width: '100%', height: `${height}px`, position: 'relative' }}>
+            {/* Chart Area Sibling for Blurring/Dimming */}
+            <div 
+                ref={chartRefDiv} 
+                style={{ 
+                    width: '100%', 
+                    height: '100%', 
+                    filter: (isLoading || isFadingOut) ? 'blur(1.5px) brightness(0.45)' : 'none',
+                    transition: 'filter 0.22s ease',
+                    pointerEvents: (isLoading || isFadingOut) ? 'none' : 'auto'
+                }} 
+            />
+
+            {/* Premium Diagnostics Overlay */}
+            <div style={{
+                position: 'absolute',
+                top: '10px',
+                left: '10px',
+                zIndex: 10,
+                background: 'rgba(15, 23, 42, 0.82)', // Slate-900 with transparency
+                backdropFilter: 'blur(6px)',
+                border: '1px solid rgba(75, 85, 99, 0.25)',
+                borderRadius: '4px',
+                padding: '6px 10px',
+                fontFamily: 'Share Tech Mono, JetBrains Mono, monospace',
+                fontSize: '10px',
+                color: '#9CA3AF', // slate-400
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '2px',
+                pointerEvents: 'none', // Let user click/pan through the overlay
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(0, 0, 0, 0.1)'
+            }}>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                    <span style={{ color: 'rgba(255, 255, 255, 0.35)' }}>SYM:</span>
+                    <span style={{ color: '#00ff88', fontWeight: 'bold' }}>{symbol || 'N/A'}</span>
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                    <span style={{ color: 'rgba(255, 255, 255, 0.35)' }}>TF:</span>
+                    <span style={{ color: '#00eeff' }}>{timeframe || 'N/A'}</span>
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                    <span style={{ color: 'rgba(255, 255, 255, 0.35)' }}>CANDLES:</span>
+                    <span style={{ color: '#fff' }}>{data?.length || 0}</span>
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                    <span style={{ color: 'rgba(255, 255, 255, 0.35)' }}>UPDATED:</span>
+                    <span style={{ color: '#ffaa00' }}>{lastUpdatedTime || 'N/A'}</span>
+                </div>
+            </div>
+
+            {/* Bloomberg-inspired Loading Overlay */}
+            {renderOverlay && (
+                <div className={`chart-loading-overlay ${isFadingOut ? 'fade-out' : ''}`}>
+                    <div className="chart-loading-spinner" />
+                    <div className="chart-loading-title">⟳ Fetching Data</div>
+                    <div className="chart-loading-tf">Loading {timeframe || 'Unknown'} chart...</div>
+                    <div className="chart-loading-stage">{loadingStage}</div>
+                </div>
+            )}
+        </div>
     );
 };
 

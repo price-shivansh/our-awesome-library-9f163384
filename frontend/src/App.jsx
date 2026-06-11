@@ -6,6 +6,14 @@ import {
   AlertTriangle, RefreshCw, Radio, Sun, Moon, ShieldAlert, Target, Info, ExternalLink, Calendar, X
 } from 'lucide-react';
 
+/* ── Auth & Session Pages ── */
+import LandingPage          from './pages/LandingPage';
+import LoginPage            from './pages/LoginPage';
+import SignupPage           from './pages/SignupPage';
+import TelegramSignalsPage  from './pages/TelegramSignalsPage';
+import ProtectedRoute       from './components/auth/ProtectedRoute';
+import { getStoredUser, logout } from './api/authService';
+
 /* ── UI Components ── */
 import IndexCard            from './components/market/IndexCard';
 import MarketsPanel         from './components/market/MarketsPanel';
@@ -19,7 +27,7 @@ import TechnicalSummaryPage from './components/TechnicalSummaryPage';
 
 /* ── Custom UI elements ── */
 import LightweightChart     from './components/ui/LightweightChart';
-import QuantPanelMock       from './components/quant/QuantPanelMock';
+import QuantPanel             from './components/quant/QuantPanel';
 
 /* ── API base ── */
 const getApiBase = () => {
@@ -29,15 +37,52 @@ const getApiBase = () => {
 };
 const API_BASE = getApiBase();
 
-const ALL_SYMBOLS = [
-  'RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'ICICIBANK.NS',
-  'SBIN.NS', 'BHARTIARTL.NS', 'ITC.NS', 'LT.NS', 'TATAPOWER.NS',
-  '^NSEI', '^NSEBANK', '^BSESN',
-  '^GSPC', '^DJI', '^IXIC', '^N225', '^HSI', '^GDAXI', '^FTSE',
-  'GC=F', 'SI=F', 'CL=F', 'BZ=F', 'NG=F',
-  'BTC-USD', 'ETH-USD', 'SOL-USD',
-  'USDINR=X', 'EURINR=X', 'GBPINR=X'
+const SYMBOL_REGISTRY = [
+  // Stock
+  { symbol: 'RELIANCE.NS', name: 'Reliance Industries', category: 'Stock', icon: '💼' },
+  { symbol: 'TCS.NS', name: 'Tata Consultancy Services', category: 'Stock', icon: '💼' },
+  { symbol: 'HDFCBANK.NS', name: 'HDFC Bank', category: 'Stock', icon: '🏦' },
+  { symbol: 'INFY.NS', name: 'Infosys', category: 'Stock', icon: '💼' },
+  { symbol: 'ICICIBANK.NS', name: 'ICICI Bank', category: 'Stock', icon: '🏦' },
+  { symbol: 'SBIN.NS', name: 'State Bank of India', category: 'Stock', icon: '🏦' },
+  { symbol: 'BHARTIARTL.NS', name: 'Bharti Airtel', category: 'Stock', icon: '📶' },
+  { symbol: 'ITC.NS', name: 'ITC Limited', category: 'Stock', icon: '🚬' },
+  { symbol: 'LT.NS', name: 'Larsen & Toubro', category: 'Stock', icon: '🏗️' },
+  { symbol: 'TATAPOWER.NS', name: 'Tata Power', category: 'Stock', icon: '⚡' },
+  
+  // Indian Indices
+  { symbol: '^NSEI', name: 'Nifty 50', category: 'Index', icon: '📈' },
+  { symbol: '^NSEBANK', name: 'Bank Nifty', category: 'Index', icon: '🏦' },
+  { symbol: '^BSESN', name: 'Sensex', category: 'Index', icon: '📈' },
+  
+  // Global Indices
+  { symbol: '^GSPC', name: 'S&P 500', category: 'Index', icon: '🇺🇸' },
+  { symbol: '^DJI', name: 'Dow Jones Index', category: 'Index', icon: '🇺🇸' },
+  { symbol: '^IXIC', name: 'NASDAQ Composite', category: 'Index', icon: '🇺🇸' },
+  { symbol: '^N225', name: 'Nikkei 225', category: 'Index', icon: '🇯🇵' },
+  { symbol: '^HSI', name: 'Hang Seng Index', category: 'Index', icon: '🇭🇰' },
+  { symbol: '^GDAXI', name: 'DAX Index', category: 'Index', icon: '🇩🇪' },
+  { symbol: '^FTSE', name: 'FTSE 100 Index', category: 'Index', icon: '🇬🇧' },
+  
+  // Commodities
+  { symbol: 'GC=F', name: 'Gold Futures', category: 'Commodity', icon: '🟡' },
+  { symbol: 'SI=F', name: 'Silver Futures', category: 'Commodity', icon: '🥈' },
+  { symbol: 'CL=F', name: 'Crude Oil', category: 'Commodity', icon: '🛢️' },
+  { symbol: 'BZ=F', name: 'Brent Crude Oil', category: 'Commodity', icon: '🛢️' },
+  { symbol: 'NG=F', name: 'Natural Gas', category: 'Commodity', icon: '🔥' },
+  
+  // Crypto
+  { symbol: 'BTC-USD', name: 'Bitcoin', category: 'Crypto', icon: '₿' },
+  { symbol: 'ETH-USD', name: 'Ethereum', category: 'Crypto', icon: '♦️' },
+  { symbol: 'SOL-USD', name: 'Solana', category: 'Crypto', icon: '☀️' },
+  
+  // Forex
+  { symbol: 'USDINR=X', name: 'USD to INR', category: 'Forex', icon: '💵' },
+  { symbol: 'EURINR=X', name: 'EUR to INR', category: 'Forex', icon: '💶' },
+  { symbol: 'GBPINR=X', name: 'GBP to INR', category: 'Forex', icon: '💷' },
 ];
+
+const ALL_SYMBOLS = SYMBOL_REGISTRY.map(item => item.symbol);
 
 const TIMEFRAMES = [
   { label: '1m', value: '1m' },
@@ -66,54 +111,90 @@ const ASSET_COLORS = {
 
 // ── Searchable symbol picker ──────────────────────────────────────────────────
 function SymbolSearch({ value, onChange }) {
-  const [query, setQuery] = useState(value);
+  const activeItem = SYMBOL_REGISTRY.find(i => i.symbol === value);
+  const [query, setQuery] = useState(activeItem ? activeItem.name : value);
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(false);
   const wrapRef = useRef(null);
 
-  useEffect(() => { setQuery(value); }, [value]);
+  useEffect(() => {
+    const item = SYMBOL_REGISTRY.find(i => i.symbol === value);
+    setQuery(item ? item.name : value);
+  }, [value]);
 
   useEffect(() => {
-    const h = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    const h = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setOpen(false);
+        const item = SYMBOL_REGISTRY.find(i => i.symbol === value);
+        setQuery(item ? item.name : value);
+      }
+    };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
-  }, []);
+  }, [value]);
 
-  const filtered = ALL_SYMBOLS.filter(s => s.toLowerCase().includes(query.toLowerCase())).slice(0, 8);
-  const select = (sym) => { setQuery(sym); onChange(sym); setOpen(false); };
+  const filtered = SYMBOL_REGISTRY.filter(item => 
+    item.symbol.toLowerCase().includes(query.toLowerCase()) || 
+    item.name.toLowerCase().includes(query.toLowerCase()) ||
+    item.category.toLowerCase().includes(query.toLowerCase())
+  ).slice(0, 8);
+
+  const select = (sym) => {
+    const item = SYMBOL_REGISTRY.find(i => i.symbol === sym);
+    setQuery(item ? item.name : sym);
+    onChange(sym);
+    setOpen(false);
+  };
 
   return (
-    <div ref={wrapRef} style={{ position: 'relative', zIndex: 50, width: '140px' }}>
+    <div ref={wrapRef} style={{ position: 'relative', zIndex: 50, width: '180px' }}>
       <input
         value={query}
         onChange={e => { setQuery(e.target.value); setOpen(true); }}
         onFocus={() => { setFocused(true); setOpen(true); }}
-        placeholder="Search symbol…"
+        placeholder="Search asset or ticker…"
         autoComplete="off" spellCheck={false}
         style={{
           background: 'var(--bg-base)', border: `1px solid ${focused ? 'var(--accent)' : 'var(--border-subtle)'}`,
-          color: 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '11px',
-          padding: '4px 8px', width: '100%', outline: 'none', borderRadius: '4px',
+          color: 'var(--text-primary)', fontFamily: 'Inter, sans-serif', fontSize: '11px',
+          padding: '6px 10px', width: '100%', outline: 'none', borderRadius: '4px',
+          transition: 'border-color 0.15s',
         }}
       />
       {open && filtered.length > 0 && (
         <ul style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 999,
+          position: 'absolute', top: '100%', left: 0, width: '280px', zIndex: 999,
           background: 'var(--bg-panel)', border: '1px solid var(--border-active)',
-          borderTop: 'none', maxHeight: '180px', overflowY: 'auto',
-          listStyle: 'none', margin: 0, padding: 0, borderRadius: '0 0 4px 4px'
+          borderTop: 'none', maxHeight: '280px', overflowY: 'auto',
+          listStyle: 'none', margin: 0, padding: 0, borderRadius: '0 0 4px 4px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.5)'
         }}>
-          {filtered.map(sym => (
-            <li key={sym} onMouseDown={() => select(sym)} style={{
-              padding: '6px 8px', fontFamily: 'JetBrains Mono, monospace', fontSize: '11px',
-              color: sym === value ? 'var(--accent)' : 'var(--text-secondary)',
-              background: sym === value ? 'var(--bg-panel-alt)' : 'transparent',
-              cursor: 'pointer', borderBottom: '1px solid var(--border-subtle)',
+          {filtered.map(item => (
+            <li key={item.symbol} onMouseDown={() => select(item.symbol)} style={{
+              padding: '8px 12px',
+              cursor: 'pointer',
+              borderBottom: '1px solid var(--border-subtle)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '2px',
+              background: item.symbol === value ? 'var(--bg-panel-alt)' : 'transparent',
+              transition: 'background 0.15s',
             }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-panel-alt)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = sym === value ? 'var(--bg-panel-alt)' : 'transparent'; e.currentTarget.style.color = sym === value ? 'var(--accent)' : 'var(--text-secondary)'; }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-panel-alt)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = item.symbol === value ? 'var(--bg-panel-alt)' : 'transparent'; }}
             >
-              {sym}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '13px' }}>{item.icon || '💼'}</span> {item.name}
+                </span>
+                <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  {item.category}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9px', color: 'var(--text-muted)' }}>
+                <span style={{ fontFamily: 'JetBrains Mono, monospace' }}>{item.symbol}</span>
+              </div>
             </li>
           ))}
         </ul>
@@ -269,6 +350,11 @@ const Header = ({ children }) => (
    ══════════════════════════════════════════ */
 function App() {
   const navigate = useNavigate();
+  const currentUser = getStoredUser();
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
   const [marketData, setMarketData] = useState(null);
   const [marketsData, setMarketsData] = useState(null);
   const [marketsLoading, setMarketsLoading] = useState(true);
@@ -282,6 +368,9 @@ function App() {
   const [chartType, setChartType] = useState('candle');
   const [chartData, setChartData] = useState([]);
   const [chartLoading, setChartLoading] = useState(false);
+  const latestRequestRef = useRef(0);
+  const [chartRefreshTrigger, setChartRefreshTrigger] = useState(0);
+  const [chartInteractiveLoading, setChartInteractiveLoading] = useState(false);
 
   /* Order state */
   const [direction, setDirection] = useState('BUY');
@@ -345,14 +434,19 @@ function App() {
 
   /* Fetch symbol-specific chart data */
   const fetchChartData = useCallback(async (sym, interval, isSilent = true) => {
-    if (chartLoading) return;
+    const requestId = ++latestRequestRef.current;
     if (!isSilent) {
       showToast("Loading chart data...", "INFO");
+      setChartInteractiveLoading(true);
     }
     setChartLoading(true);
     try {
-      console.log("Reloading chart", sym, interval);
+      console.log("Reloading chart", sym, interval, "Request ID:", requestId);
       const res = await axios.get(`${API_BASE}/paper-trading/chart/${encodeURIComponent(sym)}/${interval}`);
+      if (requestId !== latestRequestRef.current) {
+        console.log("Discarding outdated chart response for", sym, interval);
+        return;
+      }
       const raw = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
       setChartData(raw);
       console.log("Candles loaded:", raw.length);
@@ -360,15 +454,20 @@ function App() {
         showToast("Chart updated successfully", "SUCCESS");
       }
     } catch (e) {
-      console.error(e);
-      setChartData([]);
-      if (!isSilent) {
-        showToast("Failed to refresh chart", "ERROR");
+      if (requestId === latestRequestRef.current) {
+        console.error(e);
+        setChartData([]);
+        if (!isSilent) {
+          showToast("Failed to refresh chart", "ERROR");
+        }
       }
     } finally {
-      setChartLoading(false);
+      if (requestId === latestRequestRef.current) {
+        setChartLoading(false);
+        setChartInteractiveLoading(false);
+      }
     }
-  }, [chartLoading]);
+  }, []);
 
   /* Fetch Account statistics */
   const fetchTradingData = useCallback(async () => {
@@ -402,7 +501,7 @@ function App() {
 
   /* Sync chart data whenever active symbol or timeframe updates */
   useEffect(() => {
-    fetchChartData(activeSymbol, activeInterval);
+    fetchChartData(activeSymbol, activeInterval, false);
   }, [activeSymbol, activeInterval, fetchChartData]);
 
   // Auto-refresh chart data silently based on selected timeframe
@@ -533,21 +632,26 @@ function App() {
               
               {/* Presets */}
               <div style={{ display: 'flex', gap: '4px' }}>
-                {['CL=F', '^NSEI', 'BTC-USD', 'RELIANCE.NS'].map(presetSym => (
-                  <button
-                    key={presetSym}
-                    onClick={() => handleSymbolChange(presetSym)}
-                    style={{
-                      fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', padding: '3px 6px',
-                      background: activeSymbol === presetSym ? 'var(--accent-dim)' : 'var(--bg-panel-alt)',
-                      border: `1px solid ${activeSymbol === presetSym ? 'var(--accent)' : 'var(--border-subtle)'}`,
-                      color: activeSymbol === presetSym ? 'var(--accent)' : 'var(--text-secondary)',
-                      cursor: 'pointer', borderRadius: '3px'
-                    }}
-                  >
-                    {presetSym.replace('.NS', '').replace('-USD', '')}
-                  </button>
-                ))}
+                {['CL=F', '^NSEI', 'BTC-USD', 'RELIANCE.NS'].map(presetSym => {
+                  const regItem = SYMBOL_REGISTRY.find(i => i.symbol === presetSym);
+                  const displayLabel = regItem ? regItem.name.split(' ')[0] : presetSym.replace('.NS', '').replace('-USD', '');
+                  return (
+                    <button
+                      key={presetSym}
+                      onClick={() => handleSymbolChange(presetSym)}
+                      style={{
+                        fontFamily: 'Inter, sans-serif', fontSize: '9px', padding: '3px 8px',
+                        background: activeSymbol === presetSym ? 'var(--accent-dim)' : 'var(--bg-panel-alt)',
+                        border: `1px solid ${activeSymbol === presetSym ? 'var(--accent)' : 'var(--border-subtle)'}`,
+                        color: activeSymbol === presetSym ? 'var(--accent)' : 'var(--text-secondary)',
+                        cursor: 'pointer', borderRadius: '3px',
+                        fontWeight: activeSymbol === presetSym ? 700 : 500
+                      }}
+                    >
+                      {regItem?.icon ? `${regItem.icon} ` : ''}{displayLabel}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -603,7 +707,17 @@ function App() {
 
             {/* Utility actions */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <button onClick={() => navigate('/technical-summary')} className="holo-btn btn-accent" style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600 }}>
+              {currentUser && (
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginRight: '8px', fontFamily: 'JetBrains Mono, monospace', border: '1px solid var(--border-subtle)', padding: '3px 8px', borderRadius: '4px', background: 'var(--bg-panel-alt)' }}>
+                  👤 {currentUser.name || currentUser.email}
+                </span>
+              )}
+
+              <button onClick={() => navigate('/telegram-signals')} className="holo-btn btn-accent" style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600 }}>
+                📢 Telegram Signals
+              </button>
+
+              <button onClick={() => navigate('/technical-summary')} className="holo-btn" style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600 }}>
                 ⚡ Technical Summary
               </button>
 
@@ -615,8 +729,27 @@ function App() {
               </button>
 
               {/* Manual refresh */}
-              <button onClick={fetchMarketData} disabled={loading} className="holo-btn" style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px' }}>
+              <button onClick={fetchMarketData} disabled={loading} className="holo-btn" style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px' }} title="Refresh Market Data">
                 <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
+              </button>
+
+              {/* Logout button */}
+              <button 
+                onClick={handleLogout} 
+                className="holo-btn" 
+                style={{ 
+                  padding: '4px 8px', 
+                  fontSize: '11px', 
+                  fontWeight: 600, 
+                  color: 'var(--bear)', 
+                  border: '1px solid var(--bear-border)',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  borderRadius: '3px'
+                }}
+                title="Log Out"
+              >
+                Logout
               </button>
             </div>
 
@@ -642,7 +775,10 @@ function App() {
             <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span className="holo-value" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  {activeSymbol}
+                  {SYMBOL_REGISTRY.find(i => i.symbol === activeSymbol)?.name || activeSymbol}
+                </span>
+                <span style={{ fontSize: '10px', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)' }}>
+                  ({activeSymbol})
                 </span>
                 {currentPrice > 0 && (
                   <span className="holo-value" style={{ fontSize: '13px', fontWeight: 700, color: ltpColor }}>
@@ -664,7 +800,10 @@ function App() {
                   CANDLE
                 </button>
                 <button 
-                  onClick={() => fetchChartData(activeSymbol, activeInterval, false)} 
+                  onClick={() => {
+                    fetchChartData(activeSymbol, activeInterval, false);
+                    setChartRefreshTrigger(prev => prev + 1);
+                  }} 
                   disabled={chartLoading}
                   style={{ 
                     fontSize: '9px', 
@@ -693,13 +832,13 @@ function App() {
                   NO HISTORICAL CHART DATA AVAILABLE FOR {activeSymbol}
                 </div>
               ) : (
-                <LightweightChart data={chartData} type={chartType} height={460} timeframe={activeInterval} />
+                <LightweightChart data={chartData} type={chartType} height={460} timeframe={activeInterval} symbol={activeSymbol} refreshTrigger={chartRefreshTrigger} isLoading={chartInteractiveLoading} />
               )}
             </div>
           </div>
 
           {/* Quant decision panel */}
-          <QuantPanelMock 
+          <QuantPanel 
             symbol={activeSymbol} 
             onApplyPlan={(plan) => {
               setDirection(plan.direction);
@@ -938,8 +1077,33 @@ function App() {
 const AppWrapper = () => (
   <BrowserRouter>
     <Routes>
-      <Route path="/"                   element={<App />} />
-      <Route path="/technical-summary"  element={<TechnicalSummaryPage />} />
+      <Route path="/"                   element={<LandingPage />} />
+      <Route path="/login"              element={<LoginPage />} />
+      <Route path="/signup"             element={<SignupPage />} />
+      <Route 
+        path="/dashboard"         
+        element={
+          <ProtectedRoute>
+            <App />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/technical-summary"  
+        element={
+          <ProtectedRoute>
+            <TechnicalSummaryPage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/telegram-signals"  
+        element={
+          <ProtectedRoute>
+            <TelegramSignalsPage />
+          </ProtectedRoute>
+        } 
+      />
     </Routes>
   </BrowserRouter>
 );

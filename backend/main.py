@@ -28,8 +28,32 @@ import database.models  # Ensure models are registered to Base.metadata
 try:
     Base.metadata.create_all(bind=engine)
     print("[Database] Schema check: SQLite tables verified/created at startup.")
+    
+    # ── SQLite Database Migration for Users table ──
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        existing_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(users)")).fetchall()]
+        mutated = False
+        if "subscription_plan" not in existing_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN subscription_plan VARCHAR DEFAULT 'free' NOT NULL"))
+            print("[Database Migration] Added column 'subscription_plan' to users table.")
+            mutated = True
+        if "subscription_status" not in existing_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN subscription_status VARCHAR DEFAULT 'inactive' NOT NULL"))
+            print("[Database Migration] Added column 'subscription_status' to users table.")
+            mutated = True
+        if "telegram_access" not in existing_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN telegram_access BOOLEAN DEFAULT 0 NOT NULL"))
+            print("[Database Migration] Added column 'telegram_access' to users table.")
+            mutated = True
+        if "telegram_chat_id" not in existing_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN telegram_chat_id VARCHAR NULL"))
+            print("[Database Migration] Added column 'telegram_chat_id' to users table.")
+            mutated = True
+        if mutated:
+            conn.commit()
 except Exception as e:
-    print(f"[Database] ERROR: Failed to create SQLite tables at startup: {e}")
+    print(f"[Database] ERROR: Failed to check or migrate SQLite tables at startup: {e}")
 
 # ── Router imports ─────────────────────────────────────────────────────────────
 from routers.market        import router as market_router
@@ -42,6 +66,7 @@ from routers.paper_trading import router as paper_trading_router
 from routers.websockets    import router as websockets_router
 from routers.mobile_routes import router as mobile_router
 from routers.quant_routes  import router as quant_router
+from routers.auth          import router as auth_router
 
 # ── App initialisation ─────────────────────────────────────────────────────────
 app = FastAPI(
@@ -120,6 +145,7 @@ app.include_router(backtesting_router)
 app.include_router(paper_trading_router)
 app.include_router(websockets_router)
 app.include_router(quant_router)
+app.include_router(auth_router, prefix="/api/auth")
 
 if getattr(settings, "MOBILE_APP_API_ENABLED", True):
     app.include_router(mobile_router, prefix="/api/mobile")
@@ -136,7 +162,7 @@ async def health_check():
 async def _startup():
     # ── Database Initialization & Startup Checks ──────────────────────────────
     from database.db import Base, engine, SessionLocal
-    from database.models import NewsArticle, PredictionMemory, PredictionOutcome, MarketSnapshot, TelegramSubscriber, SentNews
+    from database.models import NewsArticle, PredictionMemory, PredictionOutcome, MarketSnapshot, TelegramSubscriber, SentNews, User
     try:
         Base.metadata.create_all(bind=engine)
         print("[Database] Schema check: SQLite tables verified/created.")

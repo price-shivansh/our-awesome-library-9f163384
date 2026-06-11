@@ -5,7 +5,7 @@ Calculates various technical indicators and generates signals
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Tuple
-from models import TechnicalIndicators, Signal, SignalType
+from schemas.market_schemas import TechnicalIndicators, Signal, SignalType
 from config import settings
 from datetime import datetime
 

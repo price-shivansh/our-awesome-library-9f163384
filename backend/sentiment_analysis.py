@@ -10,10 +10,9 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Any
 from bs4 import BeautifulSoup
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-from models import NewsItem, MarketSentiment, SentimentType
+from schemas.market_schemas import NewsItem, MarketSentiment, SentimentType
 from config import settings
-from news_history import save_news_to_excel
-from services.news_archive import news_archive_service
+from services.news_archive import news_archive_service, save_news_to_excel
 
 
 # Assets for which we auto-compute sentiment in get_market_sentiment()
